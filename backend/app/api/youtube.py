@@ -4,8 +4,11 @@ from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
-from .deps import get_current_user
+from ..db.session import get_db
+from ..services import oauth_service
+from .deps import get_current_user, get_workspace_id
 
 router = APIRouter(prefix="/youtube", tags=["youtube"])
 
@@ -14,18 +17,30 @@ _CHANNEL_ID = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
 _TIMEOUT = 12.0
 
 
-def _api_get(resource: str, params: dict) -> dict:
+def _api_get(resource: str, params: dict, token: str = "") -> dict:
+    """Call the YouTube Data API.
+
+    Priority: a configured server ``YOUTUBE_API_KEY`` reads any public channel;
+    without a key, an OAuth token from the workspace's connected YouTube
+    account authorises the read instead.
+    """
     key = os.getenv("YOUTUBE_API_KEY", "").strip()
-    if not key:
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    if not key and not token:
         raise HTTPException(
             status_code=503,
-            detail="YouTube Data API is not configured. Add YOUTUBE_API_KEY to the backend environment.",
+            detail=(
+                "YouTube Data API is not configured on the server. Add YOUTUBE_API_KEY to the "
+                "backend environment, or connect a YouTube account (OAuth) for channel reads."
+            ),
         )
+    final_params = {**params, **({"key": key} if key else {})}
 
     try:
         response = httpx.get(
             f"{YOUTUBE_API}/{resource}",
-            params={**params, "key": key},
+            params=final_params,
+            headers=headers,
             timeout=_TIMEOUT,
         )
     except httpx.RequestError:
@@ -94,18 +109,43 @@ def _integer(value, *, hidden: bool = False):
 
 @router.get("/dashboard")
 def dashboard(
-    channel: str = Query(..., min_length=1, max_length=250),
+    channel: str = Query("", max_length=250),
     limit: int = Query(10, ge=1, le=20),
     user=Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Look up public YouTube channel statistics and its most recent public videos."""
-    lookup_key, lookup_value = _lookup_param(channel)
+    """Look up public YouTube channel statistics and its most recent public videos.
+
+    With a channel argument, any public channel is read. Without one (or when
+    the server has no API key), the workspace's connected YouTube account is
+    used instead.
+    """
+    token = ""
+    lookup_key, lookup_value = "", ""
+    if (channel or "").strip():
+        lookup_key, lookup_value = _lookup_param(channel)
+        tokens = oauth_service.load_tokens(db, get_workspace_id(user, db), "youtube")
+        token = (tokens or {}).get("access_token", "")
+    else:
+        tokens = oauth_service.load_tokens(db, get_workspace_id(user, db), "youtube")
+        token = (tokens or {}).get("access_token", "")
+        if token:
+            lookup_key, lookup_value = "mine", "true"
+    if not lookup_key:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Enter a YouTube channel handle, channel URL, or channel ID. Without a server "
+                "YOUTUBE_API_KEY, leaving the field blank reads your connected YouTube account."
+            ),
+        )
     channels_payload = _api_get(
         "channels",
         {
             "part": "snippet,statistics,contentDetails",
             lookup_key: lookup_value,
         },
+        token=token,
     )
     items = channels_payload.get("items") or []
     if not items:
@@ -134,6 +174,7 @@ def dashboard(
                 "playlistId": uploads_playlist,
                 "maxResults": str(limit),
             },
+            token=token,
         )
         video_ids = [
             entry.get("contentDetails", {}).get("videoId")
@@ -147,6 +188,7 @@ def dashboard(
                     "part": "snippet,statistics,contentDetails",
                     "id": ",".join(video_ids[:50]),
                 },
+                token=token,
             )
             video_by_id = {
                 video.get("id"): video

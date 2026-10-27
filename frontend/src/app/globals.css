@@ -305,6 +305,16 @@ select.field { appearance: none; background-image: linear-gradient(45deg, transp
 .ui-mask { animation: maskUp .95s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .ui-pop { animation: fadeUp .5s var(--ease-out) both; }
 
+/* Loading shimmer — skeletons keep layouts stable instead of jumpy text */
+@keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.skeleton { position: relative; overflow: hidden; background: var(--paper-2); pointer-events: none; }
+.skeleton::after {
+  content: ""; position: absolute; inset: 0;
+  animation: shimmer 1.5s infinite;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
+  will-change: transform;
+}
+
 /* Content is always visible without JS (no data-hidden attribute ever gets
    written, so nothing is hidden). With JS:
 
