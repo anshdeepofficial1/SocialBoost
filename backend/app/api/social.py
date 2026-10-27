@@ -20,8 +20,8 @@ PLATFORMS = {
     "instagram": {
         "label": "Instagram",
         "product": "Reels",
-        "auth_url": "https://www.facebook.com/v19.0/dialog/oauth",
-        "scope": "instagram_basic,instagram_content_publish,pages_show_list",
+        "auth_url": "https://www.facebook.com/v26.0/dialog/oauth",
+        "scope": "instagram_basic,instagram_manage_insights,instagram_content_publish,pages_show_list,pages_read_engagement",
         "client_id_env": "IG_CLIENT_ID",
         "client_secret_env": "IG_CLIENT_SECRET",
     },
@@ -78,11 +78,14 @@ def _stats(db: Session, workspace_id: str, platform: str) -> dict:
 def _serialize(acc: SocialAccount, db: Session) -> dict:
     stats = _stats(db, acc.workspace_id, acc.platform)
     meta = PLATFORMS.get(acc.platform, {})
-    if acc.mode == "oauth" and acc.credential_ref:
+    is_live_linked = acc.mode == "oauth" and bool(acc.external_id)
+    if is_live_linked and acc.platform == "instagram":
         evidence = (
-            "OAuth-linked account. Press Recalculate to pull live platform statistics; "
-            "unavailable platforms fall back to imported history."
+            "Instagram professional account linked through Meta OAuth. "
+            "Profile counters come from Instagram; post history is synced from Instagram API where available."
         )
+    elif is_live_linked and acc.platform == "youtube":
+        evidence = "YouTube channel linked through OAuth; profile counters come from YouTube."
     elif stats["post_count"]:
         evidence = "Derived from imported historical posts"
     else:
@@ -97,12 +100,13 @@ def _serialize(acc: SocialAccount, db: Session) -> dict:
         "status": acc.status,
         "mode": acc.mode,
         "scopes": [s for s in (acc.scopes or "").split(",") if s],
-        "followers": acc.followers or stats["followers"],
-        "post_count": stats["post_count"],
-        "avg_views": stats["avg_views"],
+        "followers": acc.followers if is_live_linked else (acc.followers or stats["followers"]),
+        "post_count": acc.post_count if is_live_linked else stats["post_count"],
+        "avg_views": acc.avg_views if is_live_linked else stats["avg_views"],
         "total_views": stats["total_views"],
-        "engagement_rate": stats["engagement_rate"],
-        "live_followers": acc.followers if acc.mode == "oauth" else None,
+        "engagement_rate": acc.engagement_rate if is_live_linked else stats["engagement_rate"],
+        "live_followers": acc.followers if is_live_linked else None,
+        "external_id": acc.external_id if is_live_linked else None,
         "last_synced_at": acc.last_synced_at,
         "connected_at": acc.connected_at,
         "evidence": evidence,
@@ -199,6 +203,39 @@ def connect(payload: ConnectIn, user=Depends(get_current_user), db: Session = De
     return _serialize(acc, db)
 
 
+def _upsert_live_media(db: Session, workspace_id: str, live: dict) -> None:
+    """Keep a recent, de-duplicated copy of provider-returned Instagram media for analytics."""
+    for item in live.get("media") or []:
+        post_id = item.get("post_id")
+        if not post_id:
+            continue
+        row = (
+            db.query(HistoricalPost)
+            .filter(
+                HistoricalPost.workspace_id == workspace_id,
+                HistoricalPost.platform == "instagram",
+                HistoricalPost.post_id == post_id,
+            )
+            .first()
+        )
+        if row is None:
+            row = HistoricalPost(workspace_id=workspace_id, platform="instagram", post_id=post_id)
+            db.add(row)
+        row.caption = item.get("caption") or ""
+        row.title = item.get("title") or ""
+        row.content_type = item.get("content_type") or "post"
+        if item.get("published_at"):
+            try:
+                row.published_at = datetime.fromisoformat(item["published_at"])
+            except (TypeError, ValueError):
+                pass
+        for key in ("views", "likes", "comments", "shares", "saves", "reach"):
+            value = item.get(key)
+            if value is not None:
+                target = "saves" if key == "saves" else key
+                setattr(row, target, int(value))
+
+
 @router.post("/accounts/{account_id}/sync")
 def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(get_db)):
     ws_id = get_workspace_id(user, db)
@@ -211,21 +248,34 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
         raise HTTPException(404, "Account not found")
 
     live = None
+    tokens = None
     if acc.mode == "oauth" and acc.credential_ref:
         tokens = oauth_service.load_tokens(db, ws_id, acc.platform)
         if tokens:
             live = oauth_service.fetch_live_stats(acc.platform, tokens)
-            if live and live.get("refreshed_password_grant"):
+            if acc.platform == "instagram" and live:
+                oauth_service.store_tokens(db, ws_id, acc.platform, tokens)
+            elif live and live.get("refreshed_password_grant"):
                 oauth_service.store_tokens(db, ws_id, acc.platform, tokens)
         else:
             acc.status = "needs_reauth"
 
     stats = _stats(db, ws_id, acc.platform)
     if live:
-        acc.followers = live["followers"]
-        acc.post_count = live.get("post_count", 0) or acc.post_count
+        if acc.platform == "instagram":
+            acc.handle = live.get("handle") or acc.handle
+            acc.display_name = live.get("display_name") or acc.display_name
+            acc.external_id = live.get("external_id") or acc.external_id
+            _upsert_live_media(db, ws_id, live)
+        acc.followers = int(live.get("followers", acc.followers) or 0)
+        if "post_count" in live:
+            acc.post_count = int(live.get("post_count") or 0)
+        if "avg_views" in live:
+            acc.avg_views = int(live.get("avg_views") or 0)
+        if "engagement_rate" in live:
+            acc.engagement_rate = float(live.get("engagement_rate") or 0)
         acc.status = "connected"
-        acc_source = "live platform statistics"
+        acc_source = "live Instagram API data" if acc.platform == "instagram" else "live YouTube API data"
     else:
         acc.followers = stats["followers"]
         acc.avg_views = stats["avg_views"]
@@ -236,6 +286,16 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
     db.commit()
     body = _serialize(acc, db)
     body["sync_source"] = acc_source
+    if acc.platform == "instagram" and live:
+        body["live_metrics"] = {
+            key: live.get(key)
+            for key in ("total_views", "total_likes", "total_comments", "total_reach", "view_metrics_available", "data_source")
+        }
+    if acc.platform == "instagram" and not live:
+        body["sync_note"] = (
+            "Instagram live metrics were unavailable. Reconnect Instagram and approve the requested "
+            "instagram_manage_insights, instagram_basic, pages_show_list, and pages_read_engagement permissions."
+        )
     return body
 
 
@@ -264,7 +324,17 @@ def _oauth_redirect_uri(request: Request, platform: str) -> str:
     return str(request.base_url).rstrip("/") + f"/social/oauth/{platform}/callback"
 
 
-def _upsert_oauth_account(db: Session, ws_id: str, platform: str, handle: str, display_name: str, credential_id: str) -> SocialAccount:
+def _upsert_oauth_account(
+    db: Session,
+    ws_id: str,
+    platform: str,
+    handle: str,
+    display_name: str,
+    credential_id: str,
+    external_id: str = "",
+    followers: int = 0,
+    post_count: int = 0,
+) -> SocialAccount:
     existing = (
         db.query(SocialAccount)
         .filter(SocialAccount.workspace_id == ws_id, SocialAccount.platform == platform)
@@ -273,11 +343,13 @@ def _upsert_oauth_account(db: Session, ws_id: str, platform: str, handle: str, d
     if existing:
         existing.handle = handle
         existing.display_name = display_name or handle
-        existing.external_id = existing.external_id or ""
+        existing.external_id = external_id or existing.external_id or ""
         existing.status = "connected"
         existing.mode = "oauth"
         existing.credential_ref = credential_id
         existing.scopes = PLATFORMS[platform]["scope"]
+        existing.followers = int(followers or 0)
+        existing.post_count = int(post_count or 0)
         existing.last_synced_at = datetime.utcnow()
         acc = existing
     else:
@@ -286,10 +358,13 @@ def _upsert_oauth_account(db: Session, ws_id: str, platform: str, handle: str, d
             platform=platform,
             handle=handle,
             display_name=display_name or handle,
+            external_id=external_id or "",
             status="connected",
             mode="oauth",
             scopes=PLATFORMS[platform]["scope"],
             credential_ref=credential_id,
+            followers=int(followers or 0),
+            post_count=int(post_count or 0),
             last_synced_at=datetime.utcnow(),
         )
         db.add(acc)
@@ -369,26 +444,53 @@ def oauth_callback(
     if not tokens.get("access_token"):
         return _frontend_redirect("error", platform, "no_token")
 
-    cred = oauth_service.store_tokens(db, binding["workspace_id"], platform, tokens)
-
     handle = ""
     display_name = ""
+    external_id = ""
     followers = 0
+    post_count = 0
+    identity = {}
     try:
         identity = oauth_service.fetch_identity(platform, tokens["access_token"])
         handle = identity.get("handle") or ""
         display_name = identity.get("display_name") or ""
-        followers = identity.get("followers") or 0
+        external_id = identity.get("external_id") or ""
+        followers = int(identity.get("followers", 0) or 0)
+        post_count = int(identity.get("post_count", 0) or 0)
+        if platform == "instagram":
+            # Keep the linked Instagram User ID and Page token encrypted with
+            # the OAuth token payload. A Page's own counters are never used as IG metrics.
+            tokens["instagram_user_id"] = identity.get("instagram_user_id") or external_id
+            tokens["page_access_token"] = identity.get("page_access_token") or ""
+            tokens["page_id"] = identity.get("page_id") or ""
+            tokens["instagram_handle"] = handle
+            tokens["instagram_display_name"] = display_name
+            tokens["instagram_profile_picture_url"] = identity.get("profile_picture_url") or ""
     except Exception:
-        pass
+        import logging
+
+        logging.getLogger("socialboost.oauth").info(
+            "identity lookup failed for %s", platform, exc_info=True
+        )
+        if platform == "instagram":
+            return _frontend_redirect("error", platform, "instagram_business_account_not_found")
+
     if not handle:
-        handle = f"{platform}-user-{cred.id[:8]}"
+        handle = f"{platform}-user"
     if not display_name:
         display_name = handle
 
-    acc = _upsert_oauth_account(db, binding["workspace_id"], platform, handle, display_name, cred.id)
-    if followers:
-        acc.followers = followers
-        db.commit()
+    cred = oauth_service.store_tokens(db, binding["workspace_id"], platform, tokens)
+    acc = _upsert_oauth_account(
+        db,
+        binding["workspace_id"],
+        platform,
+        handle,
+        display_name,
+        cred.id,
+        external_id=external_id,
+        followers=followers,
+        post_count=post_count,
+    )
 
     return _frontend_redirect("connected", platform, "")
