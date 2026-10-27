@@ -176,7 +176,7 @@ export default function Overview() {
           )}
         </Panel>
 
-        <Panel title="Top imported posts" className="lg:col-span-2" flush>
+        <Panel title="Top posts" className="lg:col-span-2" flush>
           {topPosts.length === 0 ? (
             <div className="p-5">
               <Empty title="No history yet" body="Import a CSV of past posts to unlock model training and platform evidence." action={<Link href="/app/datasets" className="btn btn-ghost btn-sm">Import CSV</Link>} />
@@ -197,7 +197,7 @@ export default function Overview() {
                     <td className="px-4 py-2.5 mono text-[10.5px] text-[var(--muted)]">
                       {p.published_at ? new Date(p.published_at).toLocaleDateString() : "—"}
                     </td>
-                    <td className="px-4 py-2.5 mono text-[11px]">{p.views.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 mono text-[11px]">{p.views == null ? "—" : Number(p.views).toLocaleString()}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <div className="w-16"><Meter value={Math.min(100, p.engagement_rate * 1000)} tone="ink" /></div>
