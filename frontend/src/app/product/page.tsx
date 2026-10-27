@@ -16,7 +16,7 @@ export default function Product() {
           <div className="grid grid-cols-12 gap-6 mt-10">
             <div className="col-span-12 md:col-span-7">
               <p className="lede max-w-xl">
-                Signal Studio reads the media you already made. It measures what is measurable, estimates what a model supports, and leaves the rest visibly unknown.
+                SocialBoost reads the media you already made. It measures what is measurable, estimates what a model supports, and leaves the rest visibly unknown.
               </p>
             </div>
             <div className="col-span-12 md:col-span-5 md:text-right">

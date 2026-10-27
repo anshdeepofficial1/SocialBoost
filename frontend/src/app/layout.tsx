@@ -8,8 +8,17 @@ const body = Inter({ subsets: ["latin"], variable: "--font-body", weight: ["300"
 const mono = IBM_Plex_Mono({ subsets: ["latin"], variable: "--font-mono", weight: ["400","500"] });
 
 export const metadata: Metadata = {
-  title: "SocialBoost AI — Signal Studio",
-  description: "Analyze hooks, predict performance, schedule with intelligence.",
+  applicationName: "SocialBoost AI",
+  title: {
+    default: "SocialBoost AI — Creator Analytics",
+    template: "%s | SocialBoost AI",
+  },
+  description: "Analyze short-form videos, learn from real channel history, and plan smarter releases with SocialBoost AI.",
+  icons: {
+    icon: [{ url: "/icon.png", type: "image/png" }],
+    shortcut: "/icon.png",
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

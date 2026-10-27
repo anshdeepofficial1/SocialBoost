@@ -10,12 +10,14 @@ import { PageHeader, Panel, Stat, PlatformMark, Empty } from "@/components/app/u
 export default function Analytics() {
   const [summary, setSummary] = useState<any>(null);
   const [posts, setPosts] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
   const [platform, setPlatform] = useState("all");
   const [sort, setSort] = useState<"views" | "date" | "engagement">("date");
 
   useEffect(() => {
     api.analyticsSummary().then(setSummary).catch(() => {});
     api.analyticsPosts().then(setPosts).catch(() => {});
+    api.socialAccounts().then(setAccounts).catch(() => {});
   }, []);
 
   const filtered = useMemo(() => {
@@ -67,7 +69,7 @@ export default function Analytics() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "signal-studio-posts.csv";
+    a.download = "socialboost-posts.csv";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -88,11 +90,28 @@ export default function Analytics() {
         <Stat label="Posts" value={summary?.historical_posts ?? 0} hint={summary?.source || "imported rows"} />
       </div>
 
+      <div className="panel panel-hover flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 md:px-5 mb-5">
+        <div className="flex items-start gap-3">
+          <span className="inline-flex items-center justify-center w-9 h-9 rounded-[10px] bg-[var(--signal-soft)] text-[var(--signal-deep)] font-bold" aria-hidden="true">↗</span>
+          <div>
+            <p className="text-[12.5px] font-semibold">Your data source</p>
+            <p className="text-[11px] leading-relaxed text-[var(--muted)] mt-1">{summary?.source || "Checking imported and connected data…"}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-[.1em] text-[var(--muted)]">Connected channels</p>
+            <p className="font-display font-bold text-[19px] mt-0.5">{accounts.filter((a) => !/^(instagram|youtube)-user-/i.test(a.handle || "") && a.mode === "oauth" && a.status === "connected").length} <span className="text-[11px] font-medium text-[var(--muted)]">live-linked</span></p>
+          </div>
+          <Link href="/app/integrations" className="btn btn-ghost btn-sm">Manage</Link>
+        </div>
+      </div>
+
       {posts.length === 0 ? (
         <Panel title="No history">
           <Empty
             title="Nothing to chart yet"
-            body="Connect an Instagram professional account and sync it, or import historical Instagram and YouTube posts. Only metrics returned by the provider are used."
+            body="Connect your Instagram professional account and sync it, or import a CSV of past posts. SocialBoost will chart the data available to it."
             action={<Link href="/app/datasets" className="btn btn-signal btn-sm">Import CSV</Link>}
           />
         </Panel>

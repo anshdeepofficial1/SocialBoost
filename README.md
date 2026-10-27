@@ -1,4 +1,4 @@
-# SocialBoost AI — Signal Studio
+# SocialBoost AI — Creator Analytics Studio
 
 Full-stack social video analysis studio: FastAPI + SQLite backend, Next.js frontend.
 Analysis, prediction, calendar and connected-account statistics all read from data

@@ -48,13 +48,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
   if (!user) return null;
 
-  const ig = accounts.find((a) => a.platform === "instagram");
-  const yt = accounts.find((a) => a.platform === "youtube");
+  const isPlaceholder = (a: any) => typeof a?.handle === "string" && /^(instagram|youtube)-user-/i.test(a.handle);
+  const ig = accounts.find((a) => a.platform === "instagram" && !isPlaceholder(a));
+  const yt = accounts.find((a) => a.platform === "youtube" && !isPlaceholder(a));
 
   const Rail = (
-    <aside className="w-[262px] shrink-0 border-r border-[var(--hairline)] bg-[var(--paper)] flex flex-col h-full">
+    <aside className="app-rail w-[262px] shrink-0 border-r border-[var(--hairline)] bg-[var(--paper)] flex flex-col h-full">
       <div className="px-5 h-[66px] flex items-center justify-between border-b border-[var(--hairline)]">
-        <Link href="/" aria-label="Signal Studio home">
+        <Link href="/" aria-label="SocialBoost home">
           <Wordmark />
         </Link>
         <button className="lg:hidden text-[var(--muted)] text-[15px]" onClick={() => setOpen(false)} aria-label="Close menu">✕</button>
@@ -84,10 +85,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <span className="min-w-0 flex-1">
                   <span className="block text-[12px] font-medium truncate">{a ? `@${a.handle}` : label}</span>
                   <span className="block text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">
-                    {a ? (a.mode === "sandbox" ? "sandbox" : "connected") : "not connected"}
+                    {a ? (a.mode === "sandbox" ? "manual profile" : a.status === "needs_reauth" ? "reconnect needed" : "connected via Meta") : "not connected"}
                   </span>
                 </span>
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: a ? "var(--sage-deep)" : "var(--hairline-strong)" }} />
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: a ? (a.status === "needs_reauth" ? "var(--signal)" : "var(--sage-deep)") : "var(--hairline-strong)" }} />
               </Link>
             );
           })}
@@ -98,7 +99,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {nav.map((n) => {
           const active = n.href === "/app" ? pathname === "/app" : pathname.startsWith(n.href);
           return (
-            <Link key={n.href} href={n.href} className="rail-link" data-active={active} onClick={() => setOpen(false)}>
+            <Link key={n.href} href={n.href} className="rail-link" data-active={active} aria-current={active ? "page" : undefined} onClick={() => setOpen(false)}>
               <span className="rail-num">{n.num}</span>
               {n.label}
             </Link>
@@ -124,7 +125,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen bg-[var(--canvas)] text-[var(--ink)] flex">
+    <div className="app-shell min-h-screen bg-[var(--canvas)] text-[var(--ink)] flex">
       <div className="hidden lg:block h-screen sticky top-0">{Rail}</div>
 
       {open && (

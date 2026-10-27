@@ -3,7 +3,7 @@
   "schema": "socialboost/publish-manifest",
   "generatedAt": "2026-10-27",
   "project": {
-    "name": "SocialBoost AI — Signal Studio",
+    "name": "SocialBoost AI — Creator Analytics Studio",
     "slug": "socialboost",
     "repository": "https://github.com/anshdeepofficial1/SocialBoost",
     "description": "Full-stack social video analysis studio: FastAPI + SQLite backend, Next.js frontend. Analysis, prediction, calendar and connected-account statistics all read from data uploaded or imported by the user; no placeholder metrics.",

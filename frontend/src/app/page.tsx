@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import SiteNav from "@/components/SiteNav";
+import { Wordmark } from "@/components/Brand";
 import { Reveal, SplitLines, Counter } from "@/components/motion/Reveal";
 
 /* ---------------------------------------------------------------- visuals */
@@ -91,7 +92,7 @@ function StudioPreview() {
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--hairline)] bg-[var(--paper-2)]">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-[var(--signal)]" />
-          <span className="text-[11px] font-semibold tracking-[0.02em] text-[var(--ink-2)]">Signal Studio · Analysis</span>
+          <span className="text-[11px] font-semibold tracking-[0.02em] text-[var(--ink-2)]">SocialBoost · Creator analytics</span>
         </div>
         <span className="label">preview</span>
       </div>
@@ -439,7 +440,7 @@ export default function Landing() {
                 </Reveal>
                 <Reveal delay={160}>
                   <p className="lede">
-                    Signal Studio reads the media before you publish: the opening seconds, the technical signal, the metadata. It shows what is measured, what is estimated, and what is simply unknown.
+                    SocialBoost reads the media before you publish: the opening seconds, the technical signal, the metadata. It shows what is measured, what is estimated, and what is simply unknown.
                   </p>
                 </Reveal>
               </div>
@@ -731,7 +732,7 @@ export default function Landing() {
               <Reveal delay={120}>
                 <p className="lede max-w-sm">Open the studio, upload one video, and read what is actually there before you publish.</p>
                 <div className="mt-7 flex flex-col gap-3 max-w-xs">
-                  <Link href="/signup" className="btn btn-signal btn-lg btn-block">Open Signal Studio</Link>
+                  <Link href="/signup" className="btn btn-signal btn-lg btn-block">Open SocialBoost</Link>
                   <Link href="/login" className="btn btn-dark btn-lg btn-block">Sign in</Link>
                 </div>
               </Reveal>
@@ -745,7 +746,7 @@ export default function Landing() {
         <div className="wrap">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 pb-10 border-b border-[var(--night-line)]">
             <div>
-              <p className="font-display font-bold tracking-[-0.03em] text-[26px] text-white">SIGNAL<span className="text-[var(--signal)]">.</span></p>
+              <Wordmark light size={24} mark={38} />
               <p className="label mt-2">Powered by SocialBoost AI</p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -776,8 +777,8 @@ export default function Landing() {
             </div>
           </div>
           <div className="pt-7 border-t border-[var(--night-line)] flex flex-col sm:flex-row justify-between gap-3">
-            <span className="text-[11px] text-[var(--night-muted)]">© 2026 Signal Studio — SocialBoost AI</span>
-            <span className="text-[11px] text-[var(--night-muted)]">Local build · no fake metrics</span>
+            <span className="text-[11px] text-[var(--night-muted)]">© 2026 SocialBoost AI</span>
+            <span className="text-[11px] text-[var(--night-muted)]">Evidence-first analytics · no invented metrics</span>
           </div>
         </div>
       </footer>

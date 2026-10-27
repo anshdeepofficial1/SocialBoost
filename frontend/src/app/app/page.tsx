@@ -23,9 +23,10 @@ export default function Overview() {
     .filter((e) => e.status === "scheduled" || e.status === "processing")
     .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
 
-  const ig = accounts.find((a) => a.platform === "instagram");
-  const yt = accounts.find((a) => a.platform === "youtube");
-  const connectedCount = accounts.length;
+  const isPlaceholder = (a: any) => typeof a?.handle === "string" && /^(instagram|youtube)-user-/i.test(a.handle);
+  const ig = accounts.find((a) => a.platform === "instagram" && !isPlaceholder(a));
+  const yt = accounts.find((a) => a.platform === "youtube" && !isPlaceholder(a));
+  const connectedCount = [ig, yt].filter(Boolean).length;
 
   const topPosts = [...posts].sort((a, b) => b.views - a.views).slice(0, 4);
 
@@ -35,12 +36,12 @@ export default function Overview() {
         eyebrow="Control room"
         title={
           <>
-            Your next release
+            Your creator workspace
             <br />
-            starts here.
+            in focus.
           </>
         }
-        description="Everything measured, estimated and scheduled lives in one place. No vanity metrics — only what the data supports."
+        description="See channel health, video analyses, upcoming releases and performance history you can actually verify."
         actions={
           <>
             <Link href="/app/analyze" className="btn btn-signal">Analyze a video</Link>
@@ -55,7 +56,7 @@ export default function Overview() {
           { p: "instagram", label: "Instagram Reels", acc: ig },
           { p: "youtube", label: "YouTube Shorts", acc: yt },
         ].map(({ p, label, acc }) => (
-          <div key={p} className={`panel p-4 flex items-center gap-4 ${!acc ? "border-dashed" : ""}`}>
+          <div key={p} className={`panel panel-hover ui-fade p-4 flex items-center gap-4 ${!acc ? "border-dashed" : ""}`}>
             <PlatformMark platform={p} size={34} />
             <div className="min-w-0 flex-1">
               <p className="text-[13px] font-medium truncate">

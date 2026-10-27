@@ -29,7 +29,7 @@ export default function SiteNav() {
       }`}
     >
       <div className="wrap h-[66px] flex items-center justify-between gap-6">
-        <Link href="/" aria-label="Signal Studio home">
+        <Link href="/" aria-label="SocialBoost AI home">
           <Wordmark />
         </Link>
 
@@ -40,6 +40,7 @@ export default function SiteNav() {
               <Link
                 key={l.href}
                 href={l.href}
+                aria-current={active ? "page" : undefined}
                 className={`relative px-3.5 py-2 text-[13.5px] font-medium rounded-[var(--r-pill)] transition-colors ${
                   active ? "text-[var(--ink)] bg-[var(--paper)]" : "text-[var(--ink-2)] hover:text-[var(--ink)]"
                 }`}
