@@ -60,7 +60,7 @@ def summary(user=Depends(get_current_user), db: Session = Depends(get_db)):
         # everywhere in the product.
         "engagement_rate": _engagement(total_views, sum(p.likes or 0 for p in rows_with_views), sum(p.comments or 0 for p in rows_with_views), sum(p.shares or 0 for p in rows_with_views)),
         "by_platform": by_platform,
-        "source": "Imported historical posts" if posts else "No history imported yet",
+        "source": "Imported and provider-synced posts" if posts else "No imported or synced posts yet",
     }
 
 
