@@ -1,0 +1,54 @@
+# Render blueprint for the SocialBoost FastAPI backend.
+# Import the repo at https://dashboard.render.com/blueprint — Render reads
+# this file from the repository root. Secrets (SECRET_KEY, OAuth provider
+# credentials) are generated or left empty by Render, never committed.
+services:
+  - type: web
+    name: socialboost-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    plan: starter
+    disk:
+      name: socialboost-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: ENV
+        value: production
+      - key: DEBUG
+        value: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite:////data/socialboost.db
+      - key: UPLOAD_DIR
+        value: /data/uploads
+      - key: MAX_UPLOAD_MB
+        value: "200"
+      - key: MODEL_DIR
+        value: /data/ml/artifacts
+      - key: MIN_TRAINING_ROWS
+        value: "10"
+      - key: LIVE_PUBLISHING_ENABLED
+        value: "false"
+      - key: DEMO_MODE
+        value: "false"
+      # Fill these in the Render dashboard after the first deploy:
+      - key: CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+      # Optional OAuth providers (sandbox mode until both variables exist):
+      - key: IG_CLIENT_ID
+        sync: false
+      - key: IG_CLIENT_SECRET
+        sync: false
+      - key: YT_CLIENT_ID
+        sync: false
+      - key: YT_CLIENT_SECRET
+        sync: false

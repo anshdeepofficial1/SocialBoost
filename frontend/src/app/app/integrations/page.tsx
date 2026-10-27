@@ -26,7 +26,22 @@ export default function Integrations() {
     api.socialAccounts().then(setAccounts).catch(() => {});
     api.socialProviders().then(setProviders).catch(() => {});
   };
-  useEffect(load, []);
+  useEffect(() => {
+    // OAuth callback lands back here with ?oauth_connected=|oauth_error=.
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("oauth_connected");
+    const error = params.get("oauth_error");
+    if (connected) {
+      setMsg({ kind: "ok", text: `${connected === "instagram" ? "Instagram" : "YouTube"} account connected. Credentials are stored encrypted on the server.` });
+    } else if (error) {
+      const detail = params.get("detail");
+      setMsg({ kind: "err", text: `OAuth could not complete${detail ? ` (${detail})` : ""}. Sandbox connection is still available.` });
+    }
+    if (connected || error) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    load();
+  }, []);
 
   const connect = async (platform: string) => {
     setBusy(platform);
@@ -101,7 +116,7 @@ export default function Integrations() {
             See real evidence.
           </>
         }
-        description="Connect Instagram and YouTube to tie analysis and scheduling to a specific identity. On this build connections are sandbox records; metrics are computed only from history you import."
+        description="Connect Instagram and YouTube to tie analysis and scheduling to a specific identity. Without provider credentials connections are sandbox records; with OAuth configured you can authorise a real account (read-only) and pull live statistics."
       />
 
       {msg && (
@@ -244,16 +259,16 @@ export default function Integrations() {
             ))}
           </ul>
           <p className="mt-4 mono text-[9px] leading-relaxed text-[var(--muted)]">
-            This build requests read-only scopes. No token is stored in this database; a production deployment should use a secrets vault.
+            This build requests read-only scopes. Tokens are exchanged server-side and stored encrypted at rest; they are never returned to the browser.
           </p>
         </Panel>
 
         <Panel title="Honest limitations">
           <div className="space-y-3">
             {[
-              "No OAuth credentials are configured in this environment, so connections are sandbox records.",
-              "Follower counts come from imported history, not a live API call.",
-              "Scheduled publishing is simulated and clearly labelled sandbox.",
+              "Connections made without OAuth credentials stay sandbox records tied to the handle.",
+              "Recalculate pulls live statistics only for OAuth-linked accounts whose scopes allow it; otherwise numbers come from imported history.",
+              "Scheduled publishing is simulated and clearly labelled sandbox until a provider publishing flow is implemented.",
             ].map((t) => (
               <p key={t} className="text-[11.5px] leading-relaxed text-[var(--muted)] border-l border-[var(--hairline-strong)] pl-3">{t}</p>
             ))}

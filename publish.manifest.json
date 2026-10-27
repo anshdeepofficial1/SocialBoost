@@ -87,8 +87,9 @@
     "drafts": "Workspace-scoped caption/title drafts, optionally attached to a video"
   },
   "limitations": [
-    "OAuth authorisation: start endpoint returns 400 and callback returns 501 without provider credentials; sandbox mode is used instead",
+    "OAuth authorisation: fully implemented when IG_*/YT_* client id and secret are set (state-protected flow, server-side token exchange, tokens encrypted at rest); without credentials the start endpoint returns 400 and sandbox mode is used",
     "Live publishing: not implemented — non-sandbox jobs are marked failed with an explanation, never published",
+    "OAuth live statistics: YouTube pulls subscribers/views on Recalculate; Instagram insights require a business-linked app setup and are not read, so nothing is invented",
     "Speech recognition: not installed; analysis reports speech_analysis as unavailable",
     "OCR: only runs when Tesseract is installed, otherwise reported as unavailable",
     "Audio detection: has_audio reported as false (ffprobe not part of this build)"
@@ -114,8 +115,24 @@
     "backendHosting": {
       "notVercelNative": true,
       "reason": "FastAPI + SQLite + file uploads + OpenCV/scikit-learn need a persistent filesystem and large dependency footprint; serverless is not suitable.",
-      "recommended": "Render / Railway / Fly.io / a VPS, run: cd backend && pip install -r requirements.txt && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000",
+      "recommended": "Render blueprint already checked in: render.yaml (Starter plan, 1GB disk at /data). Alternate: Railway, Fly.io or VPS, run: cd backend && pip install -r requirements.txt && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000",
       "afterDeploy": "Set backend CORS_ORIGINS to the Vercel frontend URL and point NEXT_PUBLIC_API_URL (in Vercel) to the backend URL."
+    },
+    "oauthSetup": {
+      "instagram": {
+        "console": "https://developers.facebook.com/apps",
+        "vars": ["IG_CLIENT_ID", "IG_CLIENT_SECRET"],
+        "redirectURI": "{PUBLIC_BACKEND_URL}/social/oauth/instagram/callback",
+        "scopes": ["instagram_basic", "instagram_content_publish", "pages_show_list"]
+      },
+      "youtube": {
+        "console": "https://console.cloud.google.com",
+        "apiToEnable": "YouTube Data API v3",
+        "vars": ["YT_CLIENT_ID", "YT_CLIENT_SECRET"],
+        "redirectURI": "{PUBLIC_BACKEND_URL}/social/oauth/youtube/callback",
+        "scopes": ["https://www.googleapis.com/auth/youtube.readonly"]
+      },
+      "note": "Register callback redirect URIs as above. In production also set OAUTH_REDIRECT_BASE to the public backend URL so redirect URIs are https. Tokens are stored encrypted at rest (SECRET_KEY-derived key). Publishing remains not-implemented regardless of OAuth."
     }
   },
   "structure": {

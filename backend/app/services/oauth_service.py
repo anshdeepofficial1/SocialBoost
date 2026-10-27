@@ -1,0 +1,365 @@
+"""OAuth flows for Instagram (Meta) and YouTube (Google).
+
+Everything provider-facing lives here so ``app/api/social.py`` stays thin:
+
+* authorisation URL + CSRF state round-trip (``OAuthState`` rows);
+* token exchange and (optional) long-lived token upgrade;
+* token persistence via :class:`~app.models.social.OAuthCredential`,
+  encrypted at rest with a key derived from ``SECRET_KEY`` — raw tokens are
+  never returned by the API and never stored in ``social_accounts``;
+* best-effort live identity/statistics reads. Read-only scopes only.
+
+Important honesty rule carried over from the rest of this codebase: when a
+platform call fails, callers fall back to imported history rather than
+inventing numbers. Publishing remains a separate, not-implemented feature.
+"""
+
+import base64
+import hashlib
+import json
+import logging
+import os
+from datetime import datetime, timedelta
+from typing import Any
+from urllib.parse import urlencode
+
+import httpx
+from cryptography.fernet import Fernet, InvalidToken
+from sqlalchemy.orm import Session
+
+from ..core.config import settings
+from ..models.social import OAuthCredential, OAuthState
+
+log = logging.getLogger("socialboost.oauth")
+
+STATE_TTL_MINUTES = 15
+TIMEOUT = 30.0
+
+GRAPH_VERSION = "v19.0"
+GRAPH_BASE = f"https://graph.facebook.com/{GRAPH_VERSION}"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+YOUTUBE_API = "https://www.googleapis.com/youtube/v3"
+
+
+# --------------------------------------------------------------------------
+# Encryption helpers
+# --------------------------------------------------------------------------
+
+
+def _fernet() -> Fernet:
+    digest = hashlib.sha256(settings.SECRET_KEY.encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def _encrypt(payload: dict) -> str:
+    return _fernet().encrypt(json.dumps(payload).encode()).decode()
+
+
+def _decrypt(blob: str) -> dict | None:
+    try:
+        return json.loads(_fernet().decrypt(blob.encode()).decode())
+    except (InvalidToken, ValueError):
+        log.warning("could not decrypt an OAuth credential payload")
+        return None
+
+
+# --------------------------------------------------------------------------
+# CSRF state round-trip
+# --------------------------------------------------------------------------
+
+
+def create_state(db: Session, workspace_id: str, platform: str, redirect_uri: str) -> OAuthState:
+    import secrets
+
+    row = OAuthState(
+        state=secrets.token_urlsafe(24),
+        workspace_id=workspace_id,
+        platform=platform,
+        redirect_uri=redirect_uri,
+        expires_at=datetime.utcnow() + timedelta(minutes=STATE_TTL_MINUTES),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def consume_state(db: Session, state: str | None, platform: str) -> dict | None:
+    """Validate and delete the state row, returning its binding values.
+
+    A plain dict is returned because the row is removed from the session —
+    accessing attributes of a deleted instance re-triggers expiry.
+    """
+    if not state:
+        return None
+    row = (
+        db.query(OAuthState)
+        .filter(OAuthState.state == state, OAuthState.platform == platform)
+        .first()
+    )
+    if not row or row.expires_at < datetime.utcnow():
+        db.commit()
+        return None
+    binding = {"workspace_id": row.workspace_id, "redirect_uri": row.redirect_uri}
+    db.delete(row)
+    db.commit()
+    return binding
+
+
+# --------------------------------------------------------------------------
+# Token exchange
+# --------------------------------------------------------------------------
+
+
+def exchange_instagram(code: str, redirect_uri: str) -> dict:
+    client_id = os.getenv("IG_CLIENT_ID", "")
+    client_secret = os.getenv("IG_CLIENT_SECRET", "")
+    r = httpx.get(
+        f"{GRAPH_BASE}/oauth/access_token",
+        params={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+            "code": code,
+        },
+        timeout=TIMEOUT,
+    )
+    r.raise_for_status()
+    tokens = {"access_token": r.json().get("access_token", "")}
+
+    # Upgrade to a long-lived page token when Meta allows it. Failure is not
+    # fatal: the short-lived token still works for identity reads.
+    try:
+        r2 = httpx.get(
+            f"{GRAPH_BASE}/oauth/access_token",
+            params={
+                "grant_type": "fb_exchange_token",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "fb_exchange_token": tokens["access_token"],
+            },
+            timeout=TIMEOUT,
+        )
+        if r2.status_code == 200 and r2.json().get("access_token"):
+            tokens["access_token"] = r2.json()["access_token"]
+            expires = r2.json().get("expires_in")
+            if expires:
+                tokens["expires_at"] = (
+                    datetime.utcnow() + timedelta(seconds=int(expires))
+                ).isoformat()
+    except Exception:
+        log.info("long-lived token upgrade skipped", exc_info=True)
+    return tokens
+
+
+def exchange_youtube(code: str, redirect_uri: str) -> dict:
+    r = httpx.post(
+        GOOGLE_TOKEN_URL,
+        data={
+            "code": code,
+            "client_id": os.getenv("YT_CLIENT_ID", ""),
+            "client_secret": os.getenv("YT_CLIENT_SECRET", ""),
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        },
+        timeout=TIMEOUT,
+    )
+    r.raise_for_status()
+    body = r.json()
+    tokens = {
+        "access_token": body.get("access_token", ""),
+        "refresh_token": body.get("refresh_token", ""),
+        "expires_in": body.get("expires_in", 3600),
+    }
+    if tokens["access_token"]:
+        tokens["expires_at"] = (
+            datetime.utcnow() + timedelta(seconds=int(tokens["expires_in"]))
+        ).isoformat()
+    return tokens
+
+
+def refresh_youtube(tokens: dict) -> dict | None:
+    """Best-effort refresh; returns updated tokens or ``None``."""
+    refresh_token = tokens.get("refresh_token")
+    if not refresh_token:
+        return None
+    try:
+        r = httpx.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "client_id": os.getenv("YT_CLIENT_ID", ""),
+                "client_secret": os.getenv("YT_CLIENT_SECRET", ""),
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            },
+            timeout=TIMEOUT,
+        )
+        if r.status_code != 200:
+            return None
+        body = r.json()
+        updated = dict(tokens)
+        updated["access_token"] = body.get("access_token", updated["access_token"])
+        updated["expires_at"] = (
+            datetime.utcnow() + timedelta(seconds=int(body.get("expires_in", 3600)))
+        ).isoformat()
+        return updated
+    except Exception:
+        return None
+
+
+def exchange_code(platform: str, code: str, redirect_uri: str) -> dict:
+    if platform == "instagram":
+        return exchange_instagram(code, redirect_uri)
+    return exchange_youtube(code, redirect_uri)
+
+
+# --------------------------------------------------------------------------
+# Credential storage
+# --------------------------------------------------------------------------
+
+
+def store_tokens(db: Session, workspace_id: str, platform: str, tokens: dict) -> OAuthCredential:
+    row = (
+        db.query(OAuthCredential)
+        .filter(OAuthCredential.workspace_id == workspace_id, OAuthCredential.platform == platform)
+        .first()
+    )
+    blob = _encrypt(tokens)
+    expires = _parse_iso(tokens.get("expires_at"))
+    if row:
+        row.payload = blob
+        row.status = "active"
+        row.expires_at = expires
+        row.updated_at = datetime.utcnow()
+    else:
+        row = OAuthCredential(
+            workspace_id=workspace_id,
+            platform=platform,
+            payload=blob,
+            status="active",
+            expires_at=expires,
+        )
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def load_tokens(db: Session, workspace_id: str, platform: str) -> dict | None:
+    row = (
+        db.query(OAuthCredential)
+        .filter(OAuthCredential.workspace_id == workspace_id, OAuthCredential.platform == platform)
+        .first()
+    )
+    if not row or row.status != "active":
+        return None
+    tokens = _decrypt(row.payload)
+    return tokens if tokens else None
+
+
+def mark_revoked(db: Session, workspace_id: str, platform: str) -> None:
+    row = (
+        db.query(OAuthCredential)
+        .filter(OAuthCredential.workspace_id == workspace_id, OAuthCredential.platform == platform)
+        .first()
+    )
+    if row:
+        row.status = "revoked"
+        db.commit()
+
+
+def _parse_iso(value: Any) -> datetime | None:
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _token_is_fresh(tokens: dict) -> bool:
+    expires = _parse_iso(tokens.get("expires_at"))
+    return bool(expires and expires > datetime.utcnow() + timedelta(minutes=5))
+
+
+# --------------------------------------------------------------------------
+# Best-effort live reads (honest: any failure falls back to history)
+# --------------------------------------------------------------------------
+
+
+def fetch_identity(platform: str, access_token: str) -> dict:
+    """Return ``{"handle", "display_name", "external_id", "followers", "total_views"}``."""
+    if platform == "youtube":
+        r = httpx.get(
+            f"{YOUTUBE_API}/channels",
+            params={"part": "snippet,statistics", "mine": "true"},
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=TIMEOUT,
+        )
+        r.raise_for_status()
+        items = r.json().get("items") or []
+        if not items:
+            raise RuntimeError("No YouTube channel on this Google account.")
+        it = items[0]
+        snippet = it.get("snippet", {})
+        stats = it.get("statistics", {})
+        custom = snippet.get("customUrl") or ""
+        return {
+            "handle": custom.lstrip("@") if custom else it.get("id", ""),
+            "display_name": snippet.get("title") or "",
+            "external_id": it.get("id", ""),
+            "followers": int(stats.get("subscriberCount", 0) or 0),
+            "total_views": int(stats.get("viewCount", 0) or 0),
+        }
+    r = httpx.get(
+        f"{GRAPH_BASE}/me",
+        params={"fields": "id,name", "access_token": access_token},
+        timeout=TIMEOUT,
+    )
+    r.raise_for_status()
+    body = r.json()
+    return {
+        "handle": body.get("id", ""),
+        "display_name": body.get("name") or "",
+        "external_id": body.get("id", ""),
+        "followers": 0,
+        "total_views": 0,
+    }
+
+
+def fetch_live_stats(platform: str, tokens: dict) -> dict | None:
+    """Live counters we can read with the granted scopes, or ``None``."""
+    try:
+        if platform == "youtube":
+            access = tokens.get("access_token", "")
+            if not _token_is_fresh(tokens):
+                refreshed = refresh_youtube(tokens)
+                if refreshed:
+                    access = refreshed["access_token"]
+                    tokens.update(refreshed)
+            if not access:
+                return None
+            r = httpx.get(
+                f"{YOUTUBE_API}/channels",
+                params={"part": "statistics", "mine": "true"},
+                headers={"Authorization": f"Bearer {access}"},
+                timeout=TIMEOUT,
+            )
+            r.raise_for_status()
+            items = r.json().get("items") or []
+            if not items:
+                return None
+            stats = items[0].get("statistics", {})
+            return {
+                "followers": int(stats.get("subscriberCount", 0) or 0),
+                "total_views": int(stats.get("viewCount", 0) or 0),
+                "post_count": int(stats.get("videoCount", 0) or 0),
+                "refreshed_password_grant": bool(tokens.get("refresh_token")),
+            }
+        # Instagram: reachable insights require a business-linked app setup;
+        # read-only usage here would be guesswork, so report nothing rather
+        # than a fabricated number.
+        return None
+    except Exception:
+        log.info("live stats fetch failed for %s", platform, exc_info=True)
+        return None

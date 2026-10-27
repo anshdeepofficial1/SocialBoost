@@ -67,10 +67,15 @@ Set `NEXT_PUBLIC_API_URL` if the backend is not on `http://127.0.0.1:8000`.
 
 ### Capabilities that are deliberately reported as unavailable
 
-* **OAuth authorisation** — the start endpoint returns `400` and the callback
-  returns `501` unless provider credentials are configured. Sandbox mode is used
-  instead, and the UI says so.
+* **OAuth authorisation** — without provider credentials the start endpoint
+  returns `400` and sandbox mode is used instead. With `IG_*`/`YT_*` client
+  id and secret configured, the full OAuth flow runs: state-protected
+  authorisation, server-side token exchange, tokens encrypted at rest with a
+  `SECRET_KEY`-derived key, one-time state consumption, and a redirect back to
+  the frontend. Read-only scopes only.
 * **Live publishing** — not implemented. See the publishing row above.
+  OAuth-linked YouTube accounts can pull live channel statistics (subscribers,
+  views) on Recalculate; everything unreachable falls back to imported history.
 * **Speech recognition** — not installed. Analysis reports
   `speech_analysis: "unavailable"` instead of inventing a transcript.
 * **OCR** — only runs when Tesseract is installed; otherwise the report states

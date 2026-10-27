@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     MODEL_DIR: str = "./ml/artifacts"
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # Explicit https base for OAuth redirect URIs. Behind a reverse proxy the
+    # incoming request usually looks like http, so set this to the public
+    # backend URL, e.g. https://socialboost-api.onrender.com.
+    OAUTH_REDIRECT_BASE: str = ""
+
     # Publishing. Real provider publishing is not implemented, so non-sandbox
     # scheduled jobs must never be reported as published.
     LIVE_PUBLISHING_ENABLED: bool = False
