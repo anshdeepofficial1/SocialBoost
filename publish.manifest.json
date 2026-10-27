@@ -1,0 +1,113 @@
+{
+  "manifestVersion": 1,
+  "schema": "socialboost/publish-manifest",
+  "generatedAt": "2026-10-27",
+  "project": {
+    "name": "SocialBoost AI — Signal Studio",
+    "slug": "socialboost",
+    "repository": "https://github.com/anshdeepofficial1/SocialBoost",
+    "description": "Full-stack social video analysis studio: FastAPI + SQLite backend, Next.js frontend. Analysis, prediction, calendar and connected-account statistics all read from data uploaded or imported by the user; no placeholder metrics.",
+    "languages": ["python", "typescript"],
+    "frameworks": ["fastapi", "next"],
+    "database": "sqlite",
+    "packageManagers": {
+      "python": "requirements.txt at backend/requirements.txt",
+      "node": "package-lock.json at frontend/package-lock.json"
+    }
+  },
+  "services": [
+    {
+      "id": "backend",
+      "type": "api",
+      "name": "SocialBoost FastAPI backend",
+      "path": "backend",
+      "runtime": "python",
+      "runtimeVersion": "3.11+",
+      "install": "pip install -r requirements.txt",
+      "start": "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000",
+      "port": 8000,
+      "health": "/docs",
+      "apiDocs": "/docs",
+      "auth": "JWT bearer tokens (email + password, bcrypt)",
+      "persistence": "SQLite file created/upgraded automatically on startup by app/db/schema.py",
+      "notes": "Start backend BEFORE the frontend: the frontend calls it at NEXT_PUBLIC_API_URL."
+    },
+    {
+      "id": "frontend",
+      "type": "webapp",
+      "name": "SocialBoost Next.js frontend",
+      "path": "frontend",
+      "runtime": "node",
+      "framework": "next",
+      "frameworkVersion": "16.4.2",
+      "install": "npm install",
+      "build": "npm run build",
+      "start": "npm start",
+      "dev": "npm run dev",
+      "port": 3000,
+      "dependencies": ["backend"],
+      "notes": "Next.js 16 has breaking changes vs older conventions; see frontend/AGENTS.md before writing frontend code."
+    }
+  ],
+  "envVariables": [
+    { "name": "SECRET_KEY", "purpose": "JWT/token signing secret", "required": true, "example": "long random value in production" },
+    { "name": "DATABASE_URL", "purpose": "SQLite path", "required": false, "default": "sqlite:///./backend/socialboost.db" },
+    { "name": "UPLOAD_DIR", "purpose": "Uploaded video storage directory", "required": false, "default": "./uploads" },
+    { "name": "MAX_UPLOAD_MB", "purpose": "Max upload size in MB", "required": false, "default": "200" },
+    { "name": "CORS_ORIGINS", "purpose": "JSON list of allowed frontend origins", "required": false, "default": "[\"http://localhost:3000\",\"http://127.0.0.1:3000\"]" },
+    { "name": "MODEL_DIR", "purpose": "Per-workspace ML artifacts directory", "required": false, "default": "./ml/artifacts" },
+    { "name": "MIN_TRAINING_ROWS", "purpose": "Minimum history rows before a workspace model trains", "required": false, "default": "10" },
+    { "name": "LIVE_PUBLISHING_ENABLED", "purpose": "Live publishing is NOT implemented; keep false", "required": false, "default": "false" },
+    { "name": "FRONTEND_URL", "purpose": "Frontend base URL used by the backend", "required": false, "default": "http://localhost:3000" },
+    { "name": "NEXT_PUBLIC_API_URL", "purpose": "Backend base URL consumed by the frontend", "required": false, "default": "http://127.0.0.1:8000" },
+    { "name": "IG_CLIENT_ID", "purpose": "Optional Instagram OAuth (sandbox mode without it)", "required": false, "default": "" },
+    { "name": "IG_CLIENT_SECRET", "purpose": "Optional Instagram OAuth", "required": false, "default": "" },
+    { "name": "YT_CLIENT_ID", "purpose": "Optional YouTube OAuth", "required": false, "default": "" },
+    { "name": "YT_CLIENT_SECRET", "purpose": "Optional YouTube OAuth", "required": false, "default": "" }
+  ],
+  "localDevelopment": {
+    "steps": [
+      "Copy .env.example to .env",
+      "Backend: cd backend && pip install -r requirements.txt && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000",
+      "Frontend: cd frontend && npm install && npm run dev",
+      "Open http://localhost:3000"
+    ],
+    "tests": "cd backend && python -m pytest -q (runs against a temp database; does not touch dev data)",
+    "demoLogin": { "email": "test@test.com", "password": "pass123", "source": "seed data in the development database" }
+  },
+  "capabilities": {
+    "auth": "Email + password (bcrypt), JWT bearer tokens, per-user workspace",
+    "upload": "MP4/MOV/WebM/MKV, size-limited, metadata read with OpenCV",
+    "analysis": "Real frame measurements (brightness, contrast, scene changes, black frames), rule-based opening score with basis, technical checks, recommendations",
+    "predictions": "Random forest per workspace trained on imported history; ranges, confidence and feature importance come from that model",
+    "datasets": "CSV import with required-column validation, row rejection, duplicate post_id detection, template download",
+    "calendar": "Real month scheduling, update/cancel/delete, restart-safe jobs",
+    "connectedAccounts": "Sandbox connections store the handle and derive statistics from imported history",
+    "analytics": "Aggregates per workspace and platform (likes + comments + shares over views)",
+    "drafts": "Workspace-scoped caption/title drafts, optionally attached to a video"
+  },
+  "limitations": [
+    "OAuth authorisation: start endpoint returns 400 and callback returns 501 without provider credentials; sandbox mode is used instead",
+    "Live publishing: not implemented — non-sandbox jobs are marked failed with an explanation, never published",
+    "Speech recognition: not installed; analysis reports speech_analysis as unavailable",
+    "OCR: only runs when Tesseract is installed, otherwise reported as unavailable",
+    "Audio detection: has_audio reported as false (ffprobe not part of this build)"
+  ],
+  "machineLearning": {
+    "path": "ml/",
+    "scripts": [
+      "python ml/scripts/validate_dataset.py ml/data/sample_history.csv",
+      "python ml/scripts/train_models.py ml/data/sample_history.csv",
+      "python ml/scripts/predict.py --platform instagram --duration 24 --caption \"How I edit\"",
+      "python ml/scripts/evaluate_models.py"
+    ],
+    "artifacts": "Model artifacts are stored per workspace under ml/artifacts/ and are git-ignored"
+  },
+  "structure": {
+    "backend/": "FastAPI app (app/api, app/core, app/db, app/integrations, app/models, app/schemas, app/services, app/workers) + tests",
+    "frontend/": "Next.js App Router (public marketing pages, /app dashboard, /login, /signup)",
+    "ml/": "Training, prediction and evaluation scripts and sample data",
+    "docs/": "HANDOFF.md and handoff utility scripts",
+    "uploads/": "Runtime upload storage (git-ignored)"
+  }
+}
