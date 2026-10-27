@@ -318,13 +318,29 @@ def fetch_identity(platform: str, access_token: str) -> dict:
     )
     r.raise_for_status()
     body = r.json()
-    return {
-        "handle": body.get("id", ""),
-        "display_name": body.get("name") or "",
-        "external_id": body.get("id", ""),
-        "followers": 0,
-        "total_views": 0,
-    }
+
+    # The Facebook Login token identifies the Facebook user; the Instagram
+    # account lives behind their pages (Business/Creator accounts only).
+    r2 = httpx.get(
+        f"{GRAPH_BASE}/me/accounts",
+        params={"fields": "instagram_business_account{username,id}", "access_token": access_token},
+        timeout=TIMEOUT,
+    )
+    for page in (r2.json().get("data") or [] if r2.status_code == 200 else []):
+        ig = page.get("instagram_business_account") or {}
+        username = "".join(filter(str.isalnum, (ig.get("username") or "")))
+        if username:
+            return {
+                "handle": ig.get("username") or username,
+                "display_name": body.get("name") or "",
+                "external_id": ig.get("id") or body.get("id", ""),
+                "followers": 0,
+                "total_views": 0,
+            }
+    raise RuntimeError(
+        "No Instagram Business/Creator account is linked to your Facebook pages. "
+        "Personal Instagram accounts cannot be connected in this flow."
+    )
 
 
 def fetch_live_stats(platform: str, tokens: dict) -> dict | None:
