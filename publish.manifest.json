@@ -105,9 +105,9 @@
   },
   "deployment": {
     "platform": "vercel",
-    "configFile": "vercel.json",
+    "configFile": "frontend/vercel.json",
     "whatDeploysToVercel": ["frontend"],
-    "whatDeploysToVercelNote": "Only the Next.js frontend is deployed on Vercel (root directory = repo root; vercel.json points install/build at frontend/).",
+    "whatDeploysToVercelNote": "Deploy with Vercel Root Directory = frontend so Next.js auto-detects frontend/package.json. Root-level vercel.json was removed because monorepo cd-commands break version detection.",
     "requiredEnvVars": {
       "NEXT_PUBLIC_API_URL": "Public URL of the hosted FastAPI backend (e.g. https://socialboost-api.onrender.com). Required in Vercel project settings BEFORE the first build — NEXT_PUBLIC_ vars are baked at build time."
     },
