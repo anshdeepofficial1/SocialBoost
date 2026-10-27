@@ -204,7 +204,7 @@ export default function Integrations() {
                       </div>
                       <div className="rounded-[var(--r-sm)] bg-[var(--paper-2)] p-3.5 col-span-2 sm:col-span-1">
                         <p className="text-[10px] uppercase tracking-[.1em] text-[var(--muted)]">Average views</p>
-                        <p className="font-display font-bold text-[22px] tracking-[-.04em] mt-1">{Number(account.avg_views || 0).toLocaleString()}</p>
+                        <p className="font-display font-bold text-[22px] tracking-[-.04em] mt-1">{account.avg_views == null ? "—" : Number(account.avg_views).toLocaleString()}</p>
                       </div>
                     </div>
 

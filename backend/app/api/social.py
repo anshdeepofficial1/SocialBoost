@@ -72,9 +72,9 @@ def _stats(db: Session, workspace_id: str, platform: str) -> dict:
     followers = max((row.followers_at_publish or 0) for row in rows) if rows else 0
     return {
         "post_count": len(rows),
-        "avg_views": int(views / len(rows_with_views)) if rows_with_views else 0,
-        "total_views": views,
-        "engagement_rate": round(engagements / views, 4) if views else 0.0,
+        "avg_views": int(views / len(rows_with_views)) if rows_with_views else None,
+        "total_views": views if rows_with_views else None,
+        "engagement_rate": round(engagements / views, 4) if views else (0.0 if rows_with_views else None),
         "followers": followers,
     }
 
@@ -275,7 +275,7 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
         if "post_count" in live:
             acc.post_count = int(live.get("post_count") or 0)
         if "avg_views" in live:
-            acc.avg_views = int(live.get("avg_views") or 0)
+            acc.avg_views = int(live.get("avg_views") or 0) if live.get("view_metrics_available", 1) else None
         if "engagement_rate" in live:
             acc.engagement_rate = float(live.get("engagement_rate") or 0)
         acc.status = "connected"

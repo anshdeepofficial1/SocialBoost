@@ -86,8 +86,8 @@ export default function Overview() {
         <Stat label="Historical posts" value={summary?.historical_posts ?? 0} hint="imported performance rows" />
         <Stat
           label="Total views"
-          value={(summary?.total_views ?? 0).toLocaleString()}
-          hint={`${((summary?.engagement_rate ?? 0) * 100).toFixed(2)}% engagement`}
+          value={!summary ? "—" : summary.total_views == null ? "—" : Number(summary.total_views).toLocaleString()}
+          hint={summary?.engagement_rate == null ? "No view data available yet" : `${(summary.engagement_rate * 100).toFixed(2)}% engagement`}
         />
       </div>
 
@@ -202,7 +202,7 @@ export default function Overview() {
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <div className="w-16"><Meter value={Math.min(100, p.engagement_rate * 1000)} tone="ink" /></div>
-                        <span className="mono text-[10px] text-[var(--muted)]">{(p.engagement_rate * 100).toFixed(2)}%</span>
+                        <span className="mono text-[10px] text-[var(--muted)]">{p.engagement_rate == null ? "—" : (p.engagement_rate * 100).toFixed(2) + "%"}</span>
                       </div>
                     </td>
                   </tr>

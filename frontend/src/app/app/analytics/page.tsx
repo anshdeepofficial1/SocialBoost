@@ -24,7 +24,7 @@ export default function Analytics() {
     let rows = platform === "all" ? posts : posts.filter((p) => p.platform === platform);
     rows = [...rows].sort((a, b) => {
       if (sort === "views") return Number(b.views || 0) - Number(a.views || 0);
-      if (sort === "engagement") return b.engagement_rate - a.engagement_rate;
+      if (sort === "engagement") return Number(b.engagement_rate || 0) - Number(a.engagement_rate || 0);
       return new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime();
     });
     return rows;
@@ -37,7 +37,7 @@ export default function Analytics() {
     return rows.map((p) => ({
       date: new Date(p.published_at).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
       views: p.views == null ? null : Number(p.views),
-      engagement: +(p.engagement_rate * 100).toFixed(2),
+      engagement: p.engagement_rate == null ? null : +(p.engagement_rate * 100).toFixed(2),
     }));
   }, [posts, platform]);
 
@@ -48,7 +48,7 @@ export default function Analytics() {
         .filter((p) => src[p])
         .map((p) => ({
           platform: p === "instagram" ? "Instagram" : "YouTube",
-          views: src[p].views || 0,
+          views: src[p].views == null ? null : Number(src[p].views),
           posts: src[p].posts || 0,
         }));
     }
@@ -196,7 +196,7 @@ export default function Analytics() {
                       <td className="px-4 py-2.5 mono">{p.likes.toLocaleString()}</td>
                       <td className="px-4 py-2.5 mono">{p.comments.toLocaleString()}</td>
                       <td className="px-4 py-2.5 mono">{p.shares.toLocaleString()}</td>
-                      <td className="px-4 py-2.5 mono text-[var(--signal)]">{(p.engagement_rate * 100).toFixed(2)}%</td>
+                      <td className="px-4 py-2.5 mono text-[var(--signal)]">{p.engagement_rate == null ? "—" : (p.engagement_rate * 100).toFixed(2) + "%"}</td>
                     </tr>
                   ))}
                 </tbody>
