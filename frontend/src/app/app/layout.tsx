@@ -13,13 +13,14 @@ const nav = [
   { href: "/app/hook-lab", label: "Hook Lab", num: "02" },
   { href: "/app/predictions", label: "Predictions", num: "03" },
   { href: "/app/platform-comparison", label: "Platforms", num: "04" },
-  { href: "/app/calendar", label: "Calendar", num: "05" },
-  { href: "/app/analytics", label: "Analytics", num: "06" },
-  { href: "/app/library", label: "Library", num: "07" },
-  { href: "/app/recommendations", label: "Recommendations", num: "08" },
-  { href: "/app/datasets", label: "Datasets", num: "09" },
-  { href: "/app/integrations", label: "Accounts", num: "10" },
-  { href: "/app/settings", label: "Settings", num: "11" },
+  { href: "/app/youtube", label: "YouTube Studio", num: "05" },
+  { href: "/app/calendar", label: "Calendar", num: "06" },
+  { href: "/app/analytics", label: "Analytics", num: "07" },
+  { href: "/app/library", label: "Library", num: "08" },
+  { href: "/app/recommendations", label: "Recommendations", num: "09" },
+  { href: "/app/datasets", label: "Datasets", num: "10" },
+  { href: "/app/integrations", label: "Accounts", num: "11" },
+  { href: "/app/settings", label: "Settings", num: "12" },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
