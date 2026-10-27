@@ -24,10 +24,11 @@ def summary(user=Depends(get_current_user), db: Session = Depends(get_db)):
     jobs_total = jobs.count()
     jobs_done = jobs.filter(AnalysisJob.status == "done").count()
 
-    total_views = sum(p.views or 0 for p in posts)
+    total_views = sum(p.views or 0 for p in posts if p.views is not None)
     total_likes = sum(p.likes or 0 for p in posts)
     total_comments = sum(p.comments or 0 for p in posts)
     total_shares = sum(p.shares or 0 for p in posts)
+    rows_with_views = [p for p in posts if p.views is not None]
 
     by_platform = {}
     for platform in PLATFORMS:
@@ -57,7 +58,7 @@ def summary(user=Depends(get_current_user), db: Session = Depends(get_db)):
         "total_shares": total_shares,
         # Engagement is likes + comments + shares over views, consistently
         # everywhere in the product.
-        "engagement_rate": _engagement(total_views, total_likes, total_comments, total_shares),
+        "engagement_rate": _engagement(total_views, sum(p.likes or 0 for p in rows_with_views), sum(p.comments or 0 for p in rows_with_views), sum(p.shares or 0 for p in rows_with_views)),
         "by_platform": by_platform,
         "source": "Imported historical posts" if posts else "No history imported yet",
     }
