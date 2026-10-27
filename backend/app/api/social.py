@@ -66,9 +66,11 @@ def _stats(db: Session, workspace_id: str, platform: str) -> dict:
     views = sum(r.views or 0 for r in rows)
     engagements = sum((r.likes or 0) + (r.comments or 0) + (r.shares or 0) for r in rows)
     followers = max((r.followers_at_publish or 0) for r in rows) if rows else 0
+    rows_with_views = [row for row in rows if row.views is not None]
+    views = sum(row.views or 0 for row in rows_with_views)
     return {
         "post_count": len(rows),
-        "avg_views": int(views / len(rows)) if rows else 0,
+        "avg_views": int(views / len(rows_with_views)) if rows_with_views else 0,
         "total_views": views,
         "engagement_rate": round(engagements / views, 4) if views else 0.0,
         "followers": followers,
@@ -219,7 +221,7 @@ def _upsert_live_media(db: Session, workspace_id: str, live: dict) -> None:
             .first()
         )
         if row is None:
-            row = HistoricalPost(workspace_id=workspace_id, platform="instagram", post_id=post_id)
+            row = HistoricalPost(workspace_id=workspace_id, platform="instagram", post_id=post_id, views=None)
             db.add(row)
         row.caption = item.get("caption") or ""
         row.title = item.get("title") or ""
