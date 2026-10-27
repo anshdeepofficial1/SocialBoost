@@ -63,11 +63,13 @@ def _stats(db: Session, workspace_id: str, platform: str) -> dict:
         .filter(HistoricalPost.workspace_id == workspace_id, HistoricalPost.platform == platform)
         .all()
     )
-    views = sum(r.views or 0 for r in rows)
-    engagements = sum((r.likes or 0) + (r.comments or 0) + (r.shares or 0) for r in rows)
-    followers = max((r.followers_at_publish or 0) for r in rows) if rows else 0
     rows_with_views = [row for row in rows if row.views is not None]
     views = sum(row.views or 0 for row in rows_with_views)
+    engagements = sum(
+        (row.likes or 0) + (row.comments or 0) + (row.shares or 0)
+        for row in rows_with_views
+    )
+    followers = max((row.followers_at_publish or 0) for row in rows) if rows else 0
     return {
         "post_count": len(rows),
         "avg_views": int(views / len(rows_with_views)) if rows_with_views else 0,
