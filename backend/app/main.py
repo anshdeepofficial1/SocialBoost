@@ -20,6 +20,7 @@ from .api import (
     settings as settings_api,
     social,
     videos,
+    youtube,
 )
 from .core.config import settings
 from .db.schema import ensure_schema
@@ -50,6 +51,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(videos.router)
+app.include_router(youtube.router)
 app.include_router(analysis.router)
 app.include_router(predictions.router)
 app.include_router(coach.router)
