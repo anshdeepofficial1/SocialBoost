@@ -42,7 +42,7 @@ def summary(user=Depends(get_current_user), db: Session = Depends(get_db)):
             "likes": likes,
             "comments": comments,
             "shares": shares,
-            "avg_views": int(views / len(rows)) if rows else 0,
+            "avg_views": int(views / len([row for row in rows if row.views is not None])) if any(row.views is not None for row in rows) else 0,
             "engagement_rate": _engagement(views, likes, comments, shares),
         }
 
