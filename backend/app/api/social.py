@@ -473,14 +473,28 @@ def oauth_callback(
             tokens["instagram_handle"] = handle
             tokens["instagram_display_name"] = display_name
             tokens["instagram_profile_picture_url"] = identity.get("profile_picture_url") or ""
-    except Exception:
+    except oauth_service.InstagramAccountNotFound:
         import logging
 
         logging.getLogger("socialboost.oauth").info(
-            "identity lookup failed for %s", platform, exc_info=True
+            "no linked Instagram professional account was returned for workspace %s",
+            binding["workspace_id"],
+            exc_info=True,
         )
         if platform == "instagram":
             return _frontend_redirect("error", platform, "instagram_business_account_not_found")
+        return _frontend_redirect("error", platform, "identity_not_found")
+    except Exception:
+        import logging
+
+        # Keep the provider's actual error in server logs. Do not mislabel
+        # permission/API failures as a missing Instagram account in the UI.
+        logging.getLogger("socialboost.oauth").exception(
+            "provider identity lookup failed for %s in workspace %s",
+            platform,
+            binding["workspace_id"],
+        )
+        return _frontend_redirect("error", platform, "graph_lookup_failed")
 
     if not handle:
         handle = f"{platform}-user"
