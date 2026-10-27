@@ -281,9 +281,12 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
         acc.status = "connected"
         acc_source = "live Instagram API data" if acc.platform == "instagram" else "live YouTube API data"
     else:
-        acc.followers = stats["followers"]
-        acc.avg_views = stats["avg_views"]
-        acc.engagement_rate = stats["engagement_rate"]
+        # If OAuth is already linked, keep its last known provider counters when
+        # a live call fails; do not replace them with unrelated CSV history.
+        if acc.mode != "oauth":
+            acc.followers = stats["followers"]
+            acc.avg_views = stats["avg_views"]
+            acc.engagement_rate = stats["engagement_rate"]
         acc.status = "connected" if acc.status != "needs_reauth" else acc.status
         acc_source = "imported history"
     acc.last_synced_at = datetime.utcnow()
