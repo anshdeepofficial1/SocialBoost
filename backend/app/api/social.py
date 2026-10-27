@@ -208,7 +208,7 @@ def connect(payload: ConnectIn, user=Depends(get_current_user), db: Session = De
 
 
 def _upsert_live_media(db: Session, workspace_id: str, live: dict) -> None:
-    """Keep a recent, de-duplicated copy of provider-returned Instagram media for analytics."""
+    """Store returned Instagram media and preserve unavailable metrics as unknown."""
     for item in live.get("media") or []:
         post_id = item.get("post_id")
         if not post_id:
@@ -222,8 +222,23 @@ def _upsert_live_media(db: Session, workspace_id: str, live: dict) -> None:
             )
             .first()
         )
-        if row is None:
-            row = HistoricalPost(workspace_id=workspace_id, platform="instagram", post_id=post_id, views=None)
+        is_new = row is None
+        if is_new:
+            row = HistoricalPost(
+                workspace_id=workspace_id,
+                platform="instagram",
+                post_id=post_id,
+                views=None,
+                shares=None,
+                saves=None,
+                reach=None,
+                impressions=None,
+                follows=None,
+                profile_visits=None,
+                avg_watch_seconds=None,
+                retention=None,
+                followers_at_publish=None,
+            )
             db.add(row)
         row.caption = item.get("caption") or ""
         row.title = item.get("title") or ""
@@ -236,8 +251,12 @@ def _upsert_live_media(db: Session, workspace_id: str, live: dict) -> None:
         for key in ("views", "likes", "comments", "shares", "saves", "reach"):
             value = item.get(key)
             if value is not None:
-                target = "saves" if key == "saves" else key
-                setattr(row, target, int(value))
+                setattr(row, key, int(value))
+            elif is_new:
+                # Do not let ORM column defaults turn an unsupported or
+                # unavailable provider metric into a misleading zero.
+                setattr(row, key, None)
+
 
 
 @router.post("/accounts/{account_id}/sync")
