@@ -35,7 +35,7 @@ log = logging.getLogger("socialboost.oauth")
 STATE_TTL_MINUTES = 15
 TIMEOUT = 30.0
 
-GRAPH_VERSION = "v19.0"
+GRAPH_VERSION = "v26.0"
 GRAPH_BASE = f"https://graph.facebook.com/{GRAPH_VERSION}"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 YOUTUBE_API = "https://www.googleapis.com/youtube/v3"
@@ -287,8 +287,19 @@ def _token_is_fresh(tokens: dict) -> bool:
 # --------------------------------------------------------------------------
 
 
+def _graph_get(path: str, params: dict, access_token: str) -> dict:
+    """Call a versioned Graph API endpoint with a server-side access token."""
+    response = httpx.get(
+        f"{GRAPH_BASE}/{path.lstrip('/')}",
+        params={**params, "access_token": access_token},
+        timeout=TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def fetch_identity(platform: str, access_token: str) -> dict:
-    """Return ``{"handle", "display_name", "external_id", "followers", "total_views"}``."""
+    """Resolve the actual linked Instagram professional account or YouTube channel."""
     if platform == "youtube":
         r = httpx.get(
             f"{YOUTUBE_API}/channels",
@@ -309,42 +320,76 @@ def fetch_identity(platform: str, access_token: str) -> dict:
             "display_name": snippet.get("title") or "",
             "external_id": it.get("id", ""),
             "followers": int(stats.get("subscriberCount", 0) or 0),
+            "post_count": int(stats.get("videoCount", 0) or 0),
             "total_views": int(stats.get("viewCount", 0) or 0),
         }
-    r = httpx.get(
-        f"{GRAPH_BASE}/me",
-        params={"fields": "id,name", "access_token": access_token},
-        timeout=TIMEOUT,
-    )
-    r.raise_for_status()
-    body = r.json()
 
-    # The Facebook Login token identifies the Facebook user; the Instagram
-    # account lives behind their pages (Business/Creator accounts only).
-    r2 = httpx.get(
-        f"{GRAPH_BASE}/me/accounts",
-        params={"fields": "instagram_business_account{username,id}", "access_token": access_token},
-        timeout=TIMEOUT,
+    # With Facebook Login, first discover Pages and then read the Instagram
+    # professional account attached to each Page. Page metrics are not IG metrics.
+    user = _graph_get("me", {"fields": "id,name"}, access_token)
+    pages = _graph_get(
+        "me/accounts",
+        {
+            "fields": (
+                "id,name,access_token,"
+                "instagram_business_account{id,username,name,followers_count,media_count,profile_picture_url}"
+            )
+        },
+        access_token,
     )
-    for page in (r2.json().get("data") or [] if r2.status_code == 200 else []):
-        ig = page.get("instagram_business_account") or {}
-        username = "".join(filter(str.isalnum, (ig.get("username") or "")))
-        if username:
-            return {
-                "handle": ig.get("username") or username,
-                "display_name": body.get("name") or "",
-                "external_id": ig.get("id") or body.get("id", ""),
-                "followers": 0,
-                "total_views": 0,
-            }
+    for page in pages.get("data") or []:
+        instagram = page.get("instagram_business_account") or {}
+        instagram_id = instagram.get("id")
+        username = instagram.get("username")
+        if not instagram_id or not username:
+            continue
+        page_token = page.get("access_token")
+        if not page_token:
+            continue
+        return {
+            "handle": username,
+            "display_name": instagram.get("name") or username,
+            "external_id": instagram_id,
+            "followers": int(instagram.get("followers_count", 0) or 0),
+            "post_count": int(instagram.get("media_count", 0) or 0),
+            "profile_picture_url": instagram.get("profile_picture_url") or "",
+            "page_id": page.get("id") or "",
+            "page_name": page.get("name") or "",
+            "page_access_token": page_token,
+            "instagram_user_id": instagram_id,
+            "facebook_user_id": user.get("id") or "",
+        }
+
     raise RuntimeError(
-        "No Instagram Business/Creator account is linked to your Facebook pages. "
-        "Personal Instagram accounts cannot be connected in this flow."
+        "No Instagram Business/Creator account was found on the Facebook Pages you manage. "
+        "Switch Instagram to a professional account and link that exact account to a Page."
     )
+
+
+def _metric_value(payload: dict, metric_name: str) -> int | None:
+    for metric in payload.get("data") or []:
+        if metric.get("name") != metric_name:
+            continue
+        if isinstance(metric.get("total_value"), dict):
+            value = metric["total_value"].get("value")
+            if value is not None:
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    return None
+        values = metric.get("values") or []
+        if values:
+            value = values[-1].get("value")
+            if value is not None:
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    return None
+    return None
 
 
 def fetch_live_stats(platform: str, tokens: dict) -> dict | None:
-    """Live counters we can read with the granted scopes, or ``None``."""
+    """Fetch live provider metrics without substituting Facebook Page counters for Instagram."""
     try:
         if platform == "youtube":
             access = tokens.get("access_token", "")
@@ -368,14 +413,152 @@ def fetch_live_stats(platform: str, tokens: dict) -> dict | None:
             stats = items[0].get("statistics", {})
             return {
                 "followers": int(stats.get("subscriberCount", 0) or 0),
-                "total_views": int(stats.get("viewCount", 0) or 0),
                 "post_count": int(stats.get("videoCount", 0) or 0),
+                "total_views": int(stats.get("viewCount", 0) or 0),
                 "refreshed_password_grant": bool(tokens.get("refresh_token")),
             }
-        # Instagram: reachable insights require a business-linked app setup;
-        # read-only usage here would be guesswork, so report nothing rather
-        # than a fabricated number.
-        return None
+
+        if platform != "instagram":
+            return None
+
+        instagram_id = tokens.get("instagram_user_id")
+        page_token = tokens.get("page_access_token")
+        identity = None
+        # Older saved credentials may only contain the Facebook user token.
+        # Resolve the attached IG account on first sync so a new login is not
+        # required solely to refresh the token payload.
+        if not instagram_id or not page_token:
+            identity = fetch_identity("instagram", tokens.get("access_token", ""))
+            instagram_id = identity["instagram_user_id"]
+            page_token = identity["page_access_token"]
+            tokens.update({
+                "instagram_user_id": instagram_id,
+                "page_access_token": page_token,
+                "page_id": identity.get("page_id", ""),
+                "instagram_handle": identity.get("handle", ""),
+                "instagram_display_name": identity.get("display_name", ""),
+                "instagram_profile_picture_url": identity.get("profile_picture_url", ""),
+            })
+
+        profile = _graph_get(
+            instagram_id,
+            {"fields": "id,username,name,followers_count,media_count,profile_picture_url"},
+            page_token,
+        )
+        identity = identity or {}
+        identity.update({
+            "handle": profile.get("username") or identity.get("handle") or tokens.get("instagram_handle") or "",
+            "display_name": profile.get("name") or identity.get("display_name") or tokens.get("instagram_display_name") or "",
+            "external_id": profile.get("id") or instagram_id,
+            "followers": int(profile.get("followers_count", 0) or 0),
+            "post_count": int(profile.get("media_count", 0) or 0),
+            "profile_picture_url": profile.get("profile_picture_url") or identity.get("profile_picture_url") or "",
+        })
+        tokens.update({
+            "instagram_user_id": identity["external_id"],
+            "instagram_handle": identity["handle"],
+            "instagram_display_name": identity["display_name"],
+            "instagram_profile_picture_url": identity["profile_picture_url"],
+        })
+
+        media_response = _graph_get(
+            f"{identity['external_id']}/media",
+            {
+                "fields": "id,caption,media_type,media_product_type,timestamp,like_count,comments_count,permalink",
+                "limit": 25,
+            },
+            page_token,
+        )
+        media_rows = []
+        total_views = total_likes = total_comments = total_reach = 0
+        available_view_metrics = 0
+        for item in media_response.get("data") or []:
+            media_type = (item.get("media_product_type") or item.get("media_type") or "").upper()
+            is_video = media_type in {"REELS", "VIDEO", "STORY"}
+            metric_names = (
+                "views,reach,likes,comments,saved,shares,total_interactions"
+                if is_video
+                else "reach,likes,comments,saved,shares,total_interactions"
+            )
+            insight_data = {}
+            try:
+                insight_data = _graph_get(
+                    f"{item['id']}/insights",
+                    {"metric": metric_names},
+                    page_token,
+                )
+            except Exception:
+                # A single unsupported metric/media type must not discard the
+                # rest of the account's live media data.
+                try:
+                    fallback_names = "plays,reach,saved,shares,total_interactions" if is_video else "reach,saved,shares,total_interactions"
+                    insight_data = _graph_get(
+                        f"{item['id']}/insights",
+                        {"metric": fallback_names},
+                        page_token,
+                    )
+                except Exception:
+                    insight_data = {}
+
+            views = _metric_value(insight_data, "views")
+            if views is None:
+                views = _metric_value(insight_data, "plays")
+            reach = _metric_value(insight_data, "reach")
+            likes = int(item.get("like_count", 0) or 0)
+            comments = int(item.get("comments_count", 0) or 0)
+            saves = _metric_value(insight_data, "saved")
+            shares = _metric_value(insight_data, "shares")
+            total_interactions = _metric_value(insight_data, "total_interactions")
+            if views is not None:
+                total_views += views
+                available_view_metrics += 1
+            if reach is not None:
+                total_reach += reach
+            total_likes += likes
+            total_comments += comments
+
+            timestamp = item.get("timestamp") or ""
+            published_at = None
+            if timestamp:
+                try:
+                    published_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00")).replace(tzinfo=None).isoformat()
+                except ValueError:
+                    published_at = None
+            media_rows.append({
+                "post_id": item.get("id", ""),
+                "published_at": published_at,
+                "content_type": "reel" if media_type == "REELS" else ("video" if media_type == "VIDEO" else "post"),
+                "title": (item.get("caption") or "")[:240],
+                "caption": item.get("caption") or "",
+                "permalink": item.get("permalink") or "",
+                "views": views,
+                "likes": likes,
+                "comments": comments,
+                "shares": shares,
+                "saves": saves,
+                "reach": reach,
+                "total_interactions": total_interactions,
+            })
+
+        media_views = [row["views"] for row in media_rows if row["views"] is not None]
+        total_known_views = sum(media_views)
+        avg_views = int(total_known_views / len(media_views)) if media_views else 0
+        engagements = total_likes + total_comments
+        engagement_rate = round(engagements / total_known_views, 4) if total_known_views else 0.0
+        return {
+            **identity,
+            "followers": int(profile.get("followers_count", 0) or 0),
+            "post_count": int(profile.get("media_count", 0) or 0),
+            "avg_views": avg_views,
+            "total_views": total_known_views,
+            "total_likes": total_likes,
+            "total_comments": total_comments,
+            "total_reach": total_reach,
+            "engagement_rate": engagement_rate,
+            "media": media_rows,
+            "view_metrics_available": available_view_metrics,
+            "data_source": "Instagram Graph API",
+        }
     except Exception:
         log.info("live stats fetch failed for %s", platform, exc_info=True)
         return None
