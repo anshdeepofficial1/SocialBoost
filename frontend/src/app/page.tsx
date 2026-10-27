@@ -90,10 +90,7 @@ function StudioPreview() {
     <div className="panel overflow-hidden bg-[var(--paper)] shadow-[var(--shadow-lg)]">
       {/* window bar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--hairline)] bg-[var(--paper-2)]">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-[var(--signal)]" />
-          <span className="text-[11px] font-semibold tracking-[0.02em] text-[var(--ink-2)]">SocialBoost · Creator analytics</span>
-        </div>
+        <Wordmark size={12} mark={18} />
         <span className="label">preview</span>
       </div>
 
@@ -310,7 +307,7 @@ export default function Landing() {
         <div className="absolute inset-0 -z-10 hairgrid opacity-40 [mask-image:linear-gradient(to_bottom,black,transparent_75%)]" />
         <div className="wrap">
           <div className="flex items-center justify-between gap-6 mb-10 md:mb-14">
-            <span className="eyebrow">SocialBoost AI · Signal Studio</span>
+            <span className="eyebrow">SocialBoost AI · Creator intelligence</span>
             <span className="label hidden sm:inline-flex">Instagram + YouTube intelligence</span>
           </div>
 

@@ -83,11 +83,13 @@ export default function Analytics() {
         actions={<button className="btn btn-ghost" onClick={exportCsv} disabled={filtered.length === 0}>Export CSV</button>}
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <Stat label="Total views" value={(summary?.total_views ?? 0).toLocaleString()} />
-        <Stat label="Total likes" value={(summary?.total_likes ?? 0).toLocaleString()} />
-        <Stat label="Engagement" value={`${((summary?.engagement_rate ?? 0) * 100).toFixed(2)}%`} hint="likes + comments + shares / views" />
-        <Stat label="Posts" value={summary?.historical_posts ?? 0} hint={summary?.source || "imported rows"} />
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-4">
+        <Stat label="Total views" value={!summary ? "—" : summary.total_views == null ? "—" : Number(summary.total_views).toLocaleString()} hint="Across posts with view data" />
+        <Stat label="Total reach" value={!summary ? "—" : summary.total_reach == null ? "—" : Number(summary.total_reach).toLocaleString()} hint="Accounts reached, when available" />
+        <Stat label="Saves" value={!summary ? "—" : summary.total_saves == null ? "—" : Number(summary.total_saves).toLocaleString()} hint="Times posts were saved" />
+        <Stat label="Follows gained" value={!summary ? "—" : summary.total_follows == null ? "—" : Number(summary.total_follows).toLocaleString()} hint="From available history" />
+        <Stat label="Engagement" value={!summary || summary.engagement_rate == null ? "—" : `${(summary.engagement_rate * 100).toFixed(2)}%`} hint="Likes + comments + shares / views" />
+        <Stat label="Posts" value={summary?.historical_posts ?? "—"} hint={summary?.source || "Checking data"} />
       </div>
 
       <div className="panel panel-hover flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 md:px-5 mb-5">

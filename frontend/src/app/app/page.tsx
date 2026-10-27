@@ -70,7 +70,7 @@ export default function Overview() {
             </div>
             {acc ? (
               <div className="text-right shrink-0">
-                <p className="mono text-[11px]">{acc.avg_views.toLocaleString()}</p>
+                <p className="mono text-[11px]">{acc.avg_views == null ? "—" : Number(acc.avg_views).toLocaleString()}</p>
                 <p className="mono text-[8px] uppercase text-[var(--muted)]">avg views</p>
               </div>
             ) : (
