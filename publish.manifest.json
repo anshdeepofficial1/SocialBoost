@@ -103,6 +103,21 @@
     ],
     "artifacts": "Model artifacts are stored per workspace under ml/artifacts/ and are git-ignored"
   },
+  "deployment": {
+    "platform": "vercel",
+    "configFile": "vercel.json",
+    "whatDeploysToVercel": ["frontend"],
+    "whatDeploysToVercelNote": "Only the Next.js frontend is deployed on Vercel (root directory = repo root; vercel.json points install/build at frontend/).",
+    "requiredEnvVars": {
+      "NEXT_PUBLIC_API_URL": "Public URL of the hosted FastAPI backend (e.g. https://socialboost-api.onrender.com). Required in Vercel project settings BEFORE the first build — NEXT_PUBLIC_ vars are baked at build time."
+    },
+    "backendHosting": {
+      "notVercelNative": true,
+      "reason": "FastAPI + SQLite + file uploads + OpenCV/scikit-learn need a persistent filesystem and large dependency footprint; serverless is not suitable.",
+      "recommended": "Render / Railway / Fly.io / a VPS, run: cd backend && pip install -r requirements.txt && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000",
+      "afterDeploy": "Set backend CORS_ORIGINS to the Vercel frontend URL and point NEXT_PUBLIC_API_URL (in Vercel) to the backend URL."
+    }
+  },
   "structure": {
     "backend/": "FastAPI app (app/api, app/core, app/db, app/integrations, app/models, app/schemas, app/services, app/workers) + tests",
     "frontend/": "Next.js App Router (public marketing pages, /app dashboard, /login, /signup)",
