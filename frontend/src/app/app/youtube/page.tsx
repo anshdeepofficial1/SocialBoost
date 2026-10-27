@@ -10,7 +10,6 @@ import {
   RefreshCw,
   Search,
   ThumbsUp,
-  Users,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { PageHeader, Stat } from "@/components/app/ui";
