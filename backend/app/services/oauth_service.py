@@ -543,7 +543,12 @@ def fetch_live_stats(platform: str, tokens: dict) -> dict | None:
         media_views = [row["views"] for row in media_rows if row["views"] is not None]
         total_known_views = sum(media_views)
         avg_views = int(total_known_views / len(media_views)) if media_views else 0
-        engagements = total_likes + total_comments
+        known_view_ids = {row["post_id"] for row in media_rows if row["views"] is not None}
+        engagements = sum(
+            row["likes"] + row["comments"]
+            for row in media_rows
+            if row["post_id"] in known_view_ids
+        )
         engagement_rate = round(engagements / total_known_views, 4) if total_known_views else 0.0
         return {
             **identity,
