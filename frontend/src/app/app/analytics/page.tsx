@@ -21,7 +21,7 @@ export default function Analytics() {
   const filtered = useMemo(() => {
     let rows = platform === "all" ? posts : posts.filter((p) => p.platform === platform);
     rows = [...rows].sort((a, b) => {
-      if (sort === "views") return b.views - a.views;
+      if (sort === "views") return Number(b.views || 0) - Number(a.views || 0);
       if (sort === "engagement") return b.engagement_rate - a.engagement_rate;
       return new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime();
     });
@@ -34,7 +34,7 @@ export default function Analytics() {
       .sort((a, b) => new Date(a.published_at).getTime() - new Date(b.published_at).getTime());
     return rows.map((p) => ({
       date: new Date(p.published_at).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-      views: p.views,
+      views: p.views == null ? null : Number(p.views),
       engagement: +(p.engagement_rate * 100).toFixed(2),
     }));
   }, [posts, platform]);
@@ -77,7 +77,7 @@ export default function Analytics() {
       <PageHeader
         eyebrow="Analytics · 06"
         title={<>Actuals, not vibes.</>}
-        description="Everything here comes from posts you imported. Missing data stays missing — no interpolated or invented numbers."
+        description="This view combines imported history with posts synced from connected platforms. Metrics the provider does not return remain missing — they are never estimated."
         actions={<button className="btn btn-ghost" onClick={exportCsv} disabled={filtered.length === 0}>Export CSV</button>}
       />
 
@@ -92,7 +92,7 @@ export default function Analytics() {
         <Panel title="No history">
           <Empty
             title="Nothing to chart yet"
-            body="Import a CSV of past Instagram and YouTube posts. The app uses those rows for charts, model training and platform evidence."
+            body="Connect an Instagram professional account and sync it, or import historical Instagram and YouTube posts. Only metrics returned by the provider are used."
             action={<Link href="/app/datasets" className="btn btn-signal btn-sm">Import CSV</Link>}
           />
         </Panel>
@@ -173,7 +173,7 @@ export default function Analytics() {
                     <tr key={p.id} className="border-b border-[var(--hairline)] last:border-b-0 hover:bg-[var(--paper-2)]">
                       <td className="px-4 py-2.5"><PlatformMark platform={p.platform} size={20} /></td>
                       <td className="px-4 py-2.5 mono text-[10px] text-[var(--muted)] whitespace-nowrap">{p.published_at ? new Date(p.published_at).toLocaleDateString() : "—"}</td>
-                      <td className="px-4 py-2.5 mono">{p.views.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 mono">{p.views == null ? "—" : Number(p.views).toLocaleString()}</td>
                       <td className="px-4 py-2.5 mono">{p.likes.toLocaleString()}</td>
                       <td className="px-4 py-2.5 mono">{p.comments.toLocaleString()}</td>
                       <td className="px-4 py-2.5 mono">{p.shares.toLocaleString()}</td>
