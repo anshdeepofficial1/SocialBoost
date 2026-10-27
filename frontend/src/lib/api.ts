@@ -71,4 +71,5 @@ export const api = {
   syncSocial: (id: string) => req(`/social/accounts/${id}/sync`, { method: "POST" }),
   disconnectSocial: (id: string) => req(`/social/accounts/${id}`, { method: "DELETE" }),
   oauthStart: (platform: string) => req(`/social/oauth/${platform}/start`),
+  youtubeDashboard: (channel: string, limit = 10) => req(`/youtube/dashboard?channel=${encodeURIComponent(channel)}&limit=${limit}`),
 };
