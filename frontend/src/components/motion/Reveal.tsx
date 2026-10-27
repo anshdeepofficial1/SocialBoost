@@ -19,9 +19,10 @@ export function Reveal({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     // Native scroll-driven animation (CSS @supports block) handles reveals in
-    // supporting browsers; the JS observer is only the fallback.
+    // supporting browsers; the JS observer is only the fallback. When the user
+    // prefers reduced motion the CSS overrides keep a gentle opacity fade, so
+    // we no longer bail out entirely.
     if (window.CSS && window.CSS.supports && window.CSS.supports("animation-timeline", "view()")) return;
     const rect = el.getBoundingClientRect();
     // Hide only elements strictly below the first viewport: anything visible at

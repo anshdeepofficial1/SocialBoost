@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SiteNav from "@/components/SiteNav";
 import { Reveal, SplitLines, Counter } from "@/components/motion/Reveal";
 
@@ -19,6 +19,32 @@ function Waveform({
   tone?: "light" | "orange" | "dark";
   animate?: boolean;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(false);
+
+  // Bars sit at full height immediately; the rolling bar-in flourish plays the
+  // first time the strip scrolls into view (JS observer, CSS keyframes).
+  useEffect(() => {
+    if (!animate || active) {
+      return;
+    }
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            setActive(true);
+            io.disconnect();
+          }
+        });
+      },
+      { threshold: 0.35 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [active, animate]);
+
   const vals = Array.from({ length: bars }, (_, i) => {
     const a = Math.abs(Math.sin(i * 0.31)) * 0.6 + Math.abs(Math.cos(i * 0.11)) * 0.4;
     return 0.18 + a * 0.82;
@@ -26,18 +52,18 @@ function Waveform({
   const dim = tone === "orange" ? "rgba(255,255,255,.42)" : tone === "dark" ? "#3A3A32" : "#CFCEC6";
   const accent = tone === "orange" ? "#FFFFFF" : "var(--signal)";
   return (
-    <div className="flex items-center gap-[2px]" style={{ height }} aria-hidden="true">
+    <div ref={ref} className="flex items-center gap-[2px]" style={{ height }} aria-hidden="true">
       {vals.map((v, i) => {
         const inHook = i / bars < accentFrom;
         return (
           <span
             key={i}
-            className={animate ? "wave-bar" : ""}
+            className={animate && active ? "wave-bar" : ""}
             style={{
               flex: 1,
               height: `${v * 100}%`,
               background: inHook ? accent : dim,
-              animationDelay: animate ? `${i * 9}ms` : undefined,
+              animationDelay: animate && active ? `${i * 9}ms` : undefined,
               minWidth: 1,
               borderRadius: 1,
             }}
@@ -51,8 +77,10 @@ function Waveform({
 function StudioPreview() {
   const [t, setT] = useState(2.4);
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = window.setInterval(() => setT((v) => (v >= 4.6 ? 1.2 : +(v + 0.08).toFixed(2))), 90);
+    // Slow the playhead (instead of freezing it) when the user prefers
+    // reduced motion — it stays clearly labelled as illustrative anyway.
+    const slow = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const id = window.setInterval(() => setT((v) => (v >= 4.6 ? 1.2 : +(v + 0.08).toFixed(2))), slow ? 260 : 90);
     return () => window.clearInterval(id);
   }, []);
   const pct = (t / 6) * 100;
@@ -184,13 +212,30 @@ function PlatformCard({ platform }: { platform: "instagram" | "youtube" }) {
 
 function PredictionChart() {
   const [mounted, setMounted] = useState(false);
+  const ref = useRef<SVGSVGElement>(null);
+
+  // The baseline and future-range sketch draw in the first time the chart is
+  // scrolled into view (not on page load, where it would be missed).
   useEffect(() => {
-    const t = setTimeout(() => setMounted(true), 300);
-    return () => clearTimeout(t);
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            setMounted(true);
+            io.disconnect();
+          }
+        });
+      },
+      { threshold: 0.3 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
   }, []);
   return (
     <div className="relative">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-[200px]" aria-hidden="true">
+      <svg ref={ref} viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-[200px]" aria-hidden="true">
         {[20, 40, 60, 80].map((y) => (
           <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="rgba(255,255,255,.10)" strokeWidth="0.3" />
         ))}
@@ -451,7 +496,7 @@ export default function Landing() {
                       <span className="label">Pipeline</span>
                       <span className="tag tag-dark">what runs</span>
                     </div>
-                    <ol className="space-y-0">
+                    <ol className="space-y-0 sd-stagger">
                       {[
                         ["01", "Validate media", ""],
                         ["02", "Extract video features", ""],
@@ -523,7 +568,7 @@ export default function Landing() {
                 </div>
                 <div className="p-6 md:p-8">
                   <p className="label mb-5">What the Hook Lab reports</p>
-                  <ul className="space-y-0">
+                  <ul className="space-y-0 sd-stagger">
                     {[
                       ["Opening window", "The first seconds of your file, isolated and timed."],
                       ["Speech onset", "Reported when speech recognition is available — stated as a gap when it is not."],
