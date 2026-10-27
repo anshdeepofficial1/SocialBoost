@@ -298,6 +298,10 @@ def _graph_get(path: str, params: dict, access_token: str) -> dict:
     return response.json()
 
 
+class InstagramAccountNotFound(RuntimeError):
+    """Raised only when Meta successfully lists Pages but none has a linked professional Instagram account."""
+
+
 def fetch_identity(platform: str, access_token: str) -> dict:
     """Resolve the actual linked Instagram professional account or YouTube channel."""
     if platform == "youtube":
@@ -324,45 +328,84 @@ def fetch_identity(platform: str, access_token: str) -> dict:
             "total_views": int(stats.get("viewCount", 0) or 0),
         }
 
-    # With Facebook Login, first discover Pages and then read the Instagram
-    # professional account attached to each Page. Page metrics are not IG metrics.
+    # Meta's documented /me/accounts query uses instagram_business_account
+    # as a field. Requesting an expanded nested field set here can fail the
+    # entire request and was previously misreported as "no account found".
     user = _graph_get("me", {"fields": "id,name"}, access_token)
-    pages = _graph_get(
-        "me/accounts",
-        {
-            "fields": (
-                "id,name,access_token,"
-                "instagram_business_account{id,username,name,followers_count,media_count,profile_picture_url}"
-            )
-        },
-        access_token,
-    )
-    for page in pages.get("data") or []:
-        instagram = page.get("instagram_business_account") or {}
-        instagram_id = instagram.get("id")
-        username = instagram.get("username")
-        if not instagram_id or not username:
+    pages = []
+    cursor = None
+    for _ in range(10):
+        page_params = {
+            "fields": "id,name,access_token,tasks,instagram_business_account",
+            "limit": 100,
+        }
+        if cursor:
+            page_params["after"] = cursor
+        page_result = _graph_get("me/accounts", page_params, access_token)
+        pages.extend(page_result.get("data") or [])
+        cursor = (page_result.get("paging") or {}).get("cursors", {}).get("after")
+        if not cursor:
+            break
+
+    for page in pages:
+        page_id = page.get("id")
+        if not page_id:
             continue
-        page_token = page.get("access_token")
+        page_token = page.get("access_token") or ""
+        instagram_ref = page.get("instagram_business_account")
+
+        # Some Page responses omit expanded details. Ask the Page edge directly,
+        # using the user token, then use its Page token for Instagram profile/media.
+        if not instagram_ref:
+            page_detail = _graph_get(
+                page_id,
+                {"fields": "id,name,access_token,instagram_business_account"},
+                access_token,
+            )
+            instagram_ref = page_detail.get("instagram_business_account")
+            page_token = page_token or page_detail.get("access_token") or ""
+
+        if isinstance(instagram_ref, str):
+            instagram_id = instagram_ref
+        elif isinstance(instagram_ref, dict):
+            instagram_id = instagram_ref.get("id") or ""
+        else:
+            instagram_id = ""
+        if not instagram_id:
+            continue
         if not page_token:
+            raise RuntimeError(
+                "Meta found the linked Instagram account but did not return its Page access token. "
+                "Reconnect and ensure pages_show_list and pages_read_engagement are granted."
+            )
+
+        profile = _graph_get(
+            instagram_id,
+            {"fields": "id,username,name,followers_count,media_count,profile_picture_url"},
+            page_token,
+        )
+        username = profile.get("username") or (
+            instagram_ref.get("username", "") if isinstance(instagram_ref, dict) else ""
+        )
+        if not username:
             continue
         return {
             "handle": username,
-            "display_name": instagram.get("name") or username,
-            "external_id": instagram_id,
-            "followers": int(instagram.get("followers_count", 0) or 0),
-            "post_count": int(instagram.get("media_count", 0) or 0),
-            "profile_picture_url": instagram.get("profile_picture_url") or "",
-            "page_id": page.get("id") or "",
+            "display_name": profile.get("name") or username,
+            "external_id": profile.get("id") or instagram_id,
+            "followers": int(profile.get("followers_count", 0) or 0),
+            "post_count": int(profile.get("media_count", 0) or 0),
+            "profile_picture_url": profile.get("profile_picture_url") or "",
+            "page_id": page_id,
             "page_name": page.get("name") or "",
             "page_access_token": page_token,
-            "instagram_user_id": instagram_id,
+            "instagram_user_id": profile.get("id") or instagram_id,
             "facebook_user_id": user.get("id") or "",
         }
 
-    raise RuntimeError(
-        "No Instagram Business/Creator account was found on the Facebook Pages you manage. "
-        "Switch Instagram to a professional account and link that exact account to a Page."
+    raise InstagramAccountNotFound(
+        "Meta successfully listed the managed Pages, but none exposed a linked Instagram professional account. "
+        "Check the Instagram-to-Page link and verify the selected Page is the one connected to that account."
     )
 
 
