@@ -8,6 +8,7 @@ const body = Inter({ subsets: ["latin"], variable: "--font-body", weight: ["300"
 const mono = IBM_Plex_Mono({ subsets: ["latin"], variable: "--font-mono", weight: ["400","500"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://socialboostweb.vercel.app"),
   applicationName: "SocialBoost AI",
   title: {
     default: "SocialBoost AI — Creator Analytics",
@@ -18,6 +19,19 @@ export const metadata: Metadata = {
     icon: [{ url: "/icon.png", type: "image/png" }],
     shortcut: "/icon.png",
     apple: "/icon.png",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "SocialBoost AI",
+    title: "SocialBoost AI — Creator Analytics",
+    description: "A calmer, evidence-first workspace for short-form video analysis and channel performance.",
+    images: [{ url: "/brand/socialboost.png", alt: "SocialBoost AI" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SocialBoost AI — Creator Analytics",
+    description: "A calmer, evidence-first workspace for short-form video analysis and channel performance.",
+    images: ["/brand/socialboost.png"],
   },
 };
 

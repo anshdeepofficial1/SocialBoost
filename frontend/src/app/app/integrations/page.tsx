@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { api } from "@/lib/api";
 import { PageHeader, Panel, PlatformMark, StatusTag } from "@/components/app/ui";
 
