@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
+from sqlalchemy import null
 from sqlalchemy.orm import Session
 
 from ..core.config import settings
@@ -228,16 +229,16 @@ def _upsert_live_media(db: Session, workspace_id: str, live: dict) -> None:
                 workspace_id=workspace_id,
                 platform="instagram",
                 post_id=post_id,
-                views=None,
-                shares=None,
-                saves=None,
-                reach=None,
-                impressions=None,
-                follows=None,
-                profile_visits=None,
-                avg_watch_seconds=None,
-                retention=None,
-                followers_at_publish=None,
+                views=null(),
+                shares=null(),
+                saves=null(),
+                reach=null(),
+                impressions=null(),
+                follows=null(),
+                profile_visits=null(),
+                avg_watch_seconds=null(),
+                retention=null(),
+                followers_at_publish=null(),
             )
             db.add(row)
         row.caption = item.get("caption") or ""
@@ -255,7 +256,7 @@ def _upsert_live_media(db: Session, workspace_id: str, live: dict) -> None:
             elif is_new:
                 # Do not let ORM column defaults turn an unsupported or
                 # unavailable provider metric into a misleading zero.
-                setattr(row, key, None)
+                setattr(row, key, null())
 
 
 
