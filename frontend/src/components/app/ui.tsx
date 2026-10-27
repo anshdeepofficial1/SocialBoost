@@ -17,22 +17,34 @@ export function PageHeader({
     <header className="mb-9">
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
         <div className="max-w-3xl">
-          <p className="eyebrow">{eyebrow}</p>
-          <h1 className="display-3 mt-4">{title}</h1>
-          {description && <p className="lede mt-4 text-[15px] max-w-2xl">{description}</p>}
+          <p className="eyebrow ui-fade">{eyebrow}</p>
+          <h1 className="display-3 mt-4 ui-fade" style={{ animationDelay: "80ms" }}>{title}</h1>
+          {description && (
+            <p className="lede mt-4 text-[15px] max-w-2xl ui-fade" style={{ animationDelay: "160ms" }}>
+              {description}
+            </p>
+          )}
         </div>
-        {actions && <div className="flex flex-wrap gap-2.5 shrink-0">{actions}</div>}
+        {actions && (
+          <div className="flex flex-wrap gap-2.5 shrink-0 ui-fade" style={{ animationDelay: "200ms" }}>
+            {actions}
+          </div>
+        )}
       </div>
-      <div className="mt-8 h-px w-full bg-[var(--hairline)]" />
+      <div className="mt-8 h-px w-full bg-[var(--hairline)] rule-grow" />
     </header>
   );
 }
 
 export function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
+  const notReady = value === null || value === undefined || value === "";
   return (
-    <div className="panel panel-hover p-5">
+    <div className="panel panel-hover p-5 ui-fade" style={{ animationDelay: "120ms" }}>
       <p className="stat-label">{label}</p>
-      <p className="stat-value mt-3">{value}</p>
+      {/* key remounts when real data replaces a placeholder, so numbers fade in */}
+      <p key={typeof value === "object" ? undefined : String(value)} className={`stat-value mt-3 ${notReady ? "" : "ui-pop"}`}>
+        {value}
+      </p>
       {hint && <p className="mono text-[10px] text-[var(--muted)] mt-2.5">{hint}</p>}
     </div>
   );
@@ -52,7 +64,7 @@ export function Panel({
   flush?: boolean;
 }) {
   return (
-    <section className={`panel overflow-hidden ${className}`}>
+    <section className={`panel overflow-hidden ui-fade ${className}`} style={{ animationDelay: "150ms" }}>
       {(title || aside) && (
         <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-[var(--hairline)]">
           {title && <p className="label">{title}</p>}
@@ -66,7 +78,7 @@ export function Panel({
 
 export function Empty({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
   return (
-    <div className="border border-dashed border-[var(--hairline-strong)] rounded-[var(--r)] px-6 py-12 text-center bg-[var(--paper-2)]">
+    <div className="border border-dashed border-[var(--hairline-strong)] rounded-[var(--r)] px-6 py-12 text-center bg-[var(--paper-2)] ui-fade" style={{ animationDelay: "200ms" }}>
       <p className="font-display font-bold text-[18px] tracking-[-0.02em]">{title}</p>
       <p className="text-[13px] text-[var(--muted)] mt-2 max-w-sm mx-auto leading-relaxed">{body}</p>
       {action && <div className="mt-5 flex justify-center">{action}</div>}

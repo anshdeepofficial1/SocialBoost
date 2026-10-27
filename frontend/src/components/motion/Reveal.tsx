@@ -20,8 +20,13 @@ export function Reveal({
     const el = ref.current;
     if (!el) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Native scroll-driven animation (CSS @supports block) handles reveals in
+    // supporting browsers; the JS observer is only the fallback.
+    if (window.CSS && window.CSS.supports && window.CSS.supports("animation-timeline", "view()")) return;
     const rect = el.getBoundingClientRect();
-    if (rect.top < window.innerHeight * 0.92) return; // already in view: leave visible
+    // Hide only elements strictly below the first viewport: anything visible at
+    // hydration must never flicker from visible → hidden.
+    if (rect.top < window.innerHeight) return;
     setHidden(true);
     const io = new IntersectionObserver(
       (entries) => {
