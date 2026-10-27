@@ -35,7 +35,10 @@ export default function Integrations() {
       setMsg({ kind: "ok", text: `${connected === "instagram" ? "Instagram" : "YouTube"} account connected. Credentials are stored encrypted on the server.` });
     } else if (error) {
       const detail = params.get("detail");
-      setMsg({ kind: "err", text: `OAuth could not complete${detail ? ` (${detail})` : ""}. Sandbox connection is still available.` });
+      const message = detail === "instagram_business_account_not_found"
+        ? "Meta login completed, but no Instagram Business/Creator account was found on the Facebook Pages you manage. Make sure the Instagram account is professional, linked to the correct Page, and that the Page was selected during authorization."
+        : `OAuth could not complete${detail ? ` (${detail})` : ""}. You can retry after checking the provider setup.`;
+      setMsg({ kind: "err", text: message });
     }
     if (connected || error) {
       window.history.replaceState({}, "", window.location.pathname);
@@ -68,8 +71,21 @@ export default function Integrations() {
     setBusy(id);
     setMsg(null);
     try {
-      await api.syncSocial(id);
-      setMsg({ kind: "ok", text: "Account statistics recalculated from imported history." });
+      const result: any = await api.syncSocial(id);
+      if (result?.sync_source === "live Instagram API data") {
+        const metrics = result.live_metrics || {};
+        const viewNote = metrics.view_metrics_available
+          ? ` Views were available for ${metrics.view_metrics_available} recent media items.`
+          : " Meta did not return view metrics for the recent media items; other returned metrics were synced where available.";
+        setMsg({
+          kind: "ok",
+          text: `Synced actual Instagram account data: ${Number(result.followers || 0).toLocaleString()} followers and ${Number(result.post_count || 0).toLocaleString()} total media items.${viewNote}`,
+        });
+      } else if (result?.sync_note) {
+        setMsg({ kind: "err", text: result.sync_note });
+      } else {
+        setMsg({ kind: "ok", text: "No live provider metrics were returned; displayed statistics are based on imported history." });
+      }
       load();
     } catch (e: any) {
       setMsg({ kind: "err", text: e.message });
@@ -155,8 +171,8 @@ export default function Integrations() {
 
                     <dl className="mt-5">
                       <div className="kv"><dt>Followers</dt><dd>{acc.followers.toLocaleString()}</dd></div>
-                      <div className="kv"><dt>Imported posts</dt><dd>{acc.post_count}</dd></div>
-                      <div className="kv"><dt>Average views</dt><dd>{acc.avg_views.toLocaleString()}</dd></div>
+                      <div className="kv"><dt>{acc.mode === "oauth" ? "Platform media count" : "Imported posts"}</dt><dd>{Number(acc.post_count || 0).toLocaleString()}</dd></div>
+                      <div className="kv"><dt>{acc.mode === "oauth" ? "Average recent views" : "Average views"}</dt><dd>{Number(acc.avg_views || 0).toLocaleString()}</dd></div>
                       <div className="kv"><dt>Engagement</dt><dd>{(acc.engagement_rate * 100).toFixed(2)}%</dd></div>
                       <div className="kv"><dt>Last synced</dt><dd>{acc.last_synced_at ? new Date(acc.last_synced_at).toLocaleString() : "—"}</dd></div>
                     </dl>
@@ -165,8 +181,17 @@ export default function Integrations() {
 
                     <div className="mt-5 flex flex-wrap gap-2">
                       <button className="btn btn-ghost btn-sm" onClick={() => sync(acc.id)} disabled={busy === acc.id}>
-                        {busy === acc.id ? "Syncing…" : "Recalculate stats"}
+                        {busy === acc.id ? "Syncing…" : "Sync live stats"}
                       </button>
+                      {p.configured && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => oauthStart(p.platform)}
+                          disabled={busy === `oauth-${p.platform}`}
+                        >
+                          {busy === `oauth-${p.platform}` ? "Opening…" : "Reconnect OAuth"}
+                        </button>
+                      )}
                       <button className="btn btn-ghost btn-sm" onClick={() => disconnect(acc.id)} disabled={busy === acc.id}>
                         Disconnect
                       </button>
