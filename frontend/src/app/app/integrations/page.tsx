@@ -36,8 +36,10 @@ export default function Integrations() {
     } else if (error) {
       const detail = params.get("detail");
       const message = detail === "instagram_business_account_not_found"
-        ? "Meta login completed, but no Instagram Business/Creator account was found on the Facebook Pages you manage. Make sure the Instagram account is professional, linked to the correct Page, and that the Page was selected during authorization."
-        : `OAuth could not complete${detail ? ` (${detail})` : ""}. You can retry after checking the provider setup.`;
+        ? "Meta successfully listed your Pages, but SocialBoost could not find a professional Instagram account linked to them. Check which Page is linked to your Instagram account."
+        : detail === "graph_lookup_failed"
+          ? "Meta accepted the login, but SocialBoost could not read the Instagram account through the Graph API. Check the latest Render logs for the exact Meta API error; it may be a permission, Page-access, or API-field issue."
+          : `OAuth could not complete${detail ? ` (${detail})` : ""}. You can retry after checking the provider setup.`;
       setMsg({ kind: "err", text: message });
     }
     if (connected || error) {
