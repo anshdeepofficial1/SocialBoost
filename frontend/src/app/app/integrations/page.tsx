@@ -43,11 +43,13 @@ export default function Integrations() {
       });
     } else if (error) {
       const detail = params.get("detail");
-      const message = detail === "instagram_business_account_not_found"
-        ? "Meta accepted the login, but did not return an Instagram professional account linked to the Pages you selected. Check that the correct Instagram account is set to Business or Creator and linked to the selected Page."
-        : detail === "graph_lookup_failed"
-          ? "Meta accepted the login, but SocialBoost could not read the Instagram profile. The connection needs another check; no Facebook Page metrics were substituted for Instagram data."
-          : `The connection could not be completed${detail ? ` (${detail.replace(/_/g, " ")})` : ""}. Please try again.`;
+      const message = detail === "instagram_pages_not_found"
+        ? "Meta login succeeded, but Facebook returned no Pages accessible to SocialBoost. Sign in with a Facebook profile that has access to the Page and approve the pages_show_list permission. If this Instagram account is not linked to a Facebook Page, this Facebook-login flow cannot connect it."
+        : detail === "instagram_business_account_not_found"
+          ? "Meta returned Facebook Pages, but none exposed a linked Instagram professional account. Confirm the Instagram account is Business or Creator, then check the Page's Linked accounts > Instagram setting. Make sure it is linked to one of the Pages selected during authorization, then reconnect."
+          : detail === "graph_lookup_failed"
+            ? "Meta accepted the login, but SocialBoost could not read the Instagram profile. Check the backend deployment logs for the Meta API error; no Facebook Page metrics were substituted for Instagram data."
+            : `The connection could not be completed${detail ? ` (${detail.replace(/_/g, " ")})` : ""}. Please try again.`;
       setMsg({ kind: "err", text: message });
     }
     if (connected || error) window.history.replaceState({}, "", window.location.pathname);
