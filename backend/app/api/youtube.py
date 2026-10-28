@@ -17,15 +17,19 @@ _CHANNEL_ID = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
 _TIMEOUT = 12.0
 
 
-def _api_get(resource: str, params: dict, token: str = "") -> dict:
+def _api_get(resource: str, params: dict, token: str = "", *, prefer_api_key: bool = True) -> dict:
     """Call the YouTube Data API.
 
     Priority: a configured server ``YOUTUBE_API_KEY`` reads any public channel;
     without a key, an OAuth token from the workspace's connected YouTube
     account authorises the read instead.
     """
-    key = os.getenv("YOUTUBE_API_KEY", "").strip()
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    configured_key = os.getenv("YOUTUBE_API_KEY", "").strip()
+    # Public channel lookups should use the API key alone. Sending a stale
+    # OAuth bearer token alongside a valid API key can make Google reject the
+    # request as unauthenticated. The private "mine=true" path must use OAuth.
+    key = configured_key if prefer_api_key else ""
+    headers = {} if key else ({"Authorization": f"Bearer {token}"} if token else {})
     if not key and not token:
         raise HTTPException(
             status_code=503,
@@ -55,7 +59,22 @@ def _api_get(resource: str, params: dict, token: str = "") -> dict:
         if response.status_code == 403 and ("quota" in message.lower() or "limit" in message.lower()):
             raise HTTPException(status_code=429, detail="YouTube API quota limit reached. Try again later.") from None
         if response.status_code == 403:
-            raise HTTPException(status_code=502, detail="YouTube API denied the request. Check the server API key and API restrictions.") from None
+            raise HTTPException(status_code=502, detail="YouTube API denied the request. Check the server API key, API restrictions, and quota.") from None
+        lowered = message.lower()
+        auth_error = response.status_code in (400, 401) and any(
+            marker in lowered
+            for marker in ("invalid authentication credentials", "invalidcredentials", "api key not valid", "invalid api key")
+        )
+        if auth_error and key:
+            raise HTTPException(
+                status_code=502,
+                detail="YouTube Data API rejected YOUTUBE_API_KEY. Check the key in the backend environment, enable YouTube Data API v3 in its Google Cloud project, and review API restrictions.",
+            ) from None
+        if auth_error:
+            raise HTTPException(
+                status_code=502,
+                detail="Google rejected the connected YouTube access token. The token may have expired or been revoked. Reconnect YouTube in Integrations, or configure YOUTUBE_API_KEY on the backend for public channel lookups.",
+            ) from None
         raise HTTPException(status_code=502, detail=message[:240]) from None
 
     return response.json()
@@ -122,12 +141,19 @@ def dashboard(
     """
     token = ""
     lookup_key, lookup_value = "", ""
-    if (channel or "").strip():
+    workspace_id = get_workspace_id(user, db)
+    has_public_lookup = bool((channel or "").strip())
+    has_api_key = bool(os.getenv("YOUTUBE_API_KEY", "").strip())
+    if has_public_lookup:
         lookup_key, lookup_value = _lookup_param(channel)
-        tokens = oauth_service.load_tokens(db, get_workspace_id(user, db), "youtube")
-        token = (tokens or {}).get("access_token", "")
+        # When a server API key is configured, do not even load OAuth here:
+        # public-channel reads do not require a user credential.
+        if not has_api_key:
+            tokens = oauth_service.load_fresh_youtube_tokens(db, workspace_id)
+            token = (tokens or {}).get("access_token", "")
     else:
-        tokens = oauth_service.load_tokens(db, get_workspace_id(user, db), "youtube")
+        # "mine=true" is an OAuth-only endpoint, even when an API key exists.
+        tokens = oauth_service.load_fresh_youtube_tokens(db, workspace_id)
         token = (tokens or {}).get("access_token", "")
         if token:
             lookup_key, lookup_value = "mine", "true"
@@ -146,6 +172,7 @@ def dashboard(
             lookup_key: lookup_value,
         },
         token=token,
+        prefer_api_key=lookup_key != "mine",
     )
     items = channels_payload.get("items") or []
     if not items:
@@ -175,6 +202,7 @@ def dashboard(
                 "maxResults": str(limit),
             },
             token=token,
+            prefer_api_key=lookup_key != "mine",
         )
         video_ids = [
             entry.get("contentDetails", {}).get("videoId")
@@ -189,6 +217,7 @@ def dashboard(
                     "id": ",".join(video_ids[:50]),
                 },
                 token=token,
+                prefer_api_key=lookup_key != "mine",
             )
             video_by_id = {
                 video.get("id"): video
