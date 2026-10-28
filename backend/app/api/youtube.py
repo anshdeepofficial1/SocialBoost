@@ -165,14 +165,46 @@ def dashboard(
                 "YOUTUBE_API_KEY, leaving the field blank reads your connected YouTube account."
             ),
         )
-    channels_payload = _api_get(
+    def request(resource: str, params: dict) -> dict:
+        nonlocal token
+        use_api_key = lookup_key != "mine" and bool(os.getenv("YOUTUBE_API_KEY", "").strip())
+        try:
+            return _api_get(
+                resource,
+                params,
+                token=token,
+                prefer_api_key=lookup_key != "mine",
+            )
+        except HTTPException as exc:
+            # A token can be revoked or expire earlier than its locally saved
+            # timestamp suggests. Force one refresh-and-retry before surfacing
+            # an authentication error, then persist the new encrypted grant.
+            if (
+                exc.status_code != 502
+                or use_api_key
+                or not token
+                or "Google rejected the connected YouTube access token" not in str(exc.detail)
+            ):
+                raise
+            current_tokens = oauth_service.load_tokens(db, workspace_id, "youtube") or {}
+            refreshed = oauth_service.refresh_youtube(current_tokens)
+            if not refreshed or not refreshed.get("access_token"):
+                raise
+            oauth_service.store_tokens(db, workspace_id, "youtube", refreshed)
+            token = refreshed["access_token"]
+            return _api_get(
+                resource,
+                params,
+                token=token,
+                prefer_api_key=lookup_key != "mine",
+            )
+
+    channels_payload = request(
         "channels",
         {
             "part": "snippet,statistics,contentDetails",
             lookup_key: lookup_value,
         },
-        token=token,
-        prefer_api_key=lookup_key != "mine",
     )
     items = channels_payload.get("items") or []
     if not items:
@@ -194,15 +226,13 @@ def dashboard(
 
     videos = []
     if uploads_playlist:
-        playlist_payload = _api_get(
+        playlist_payload = request(
             "playlistItems",
             {
                 "part": "contentDetails",
                 "playlistId": uploads_playlist,
                 "maxResults": str(limit),
             },
-            token=token,
-            prefer_api_key=lookup_key != "mine",
         )
         video_ids = [
             entry.get("contentDetails", {}).get("videoId")
@@ -210,14 +240,12 @@ def dashboard(
             if entry.get("contentDetails", {}).get("videoId")
         ]
         if video_ids:
-            video_payload = _api_get(
+            video_payload = request(
                 "videos",
                 {
                     "part": "snippet,statistics,contentDetails",
                     "id": ",".join(video_ids[:50]),
                 },
-                token=token,
-                prefer_api_key=lookup_key != "mine",
             )
             video_by_id = {
                 video.get("id"): video
