@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, syncConnectedAccountsIfNeeded } from "@/lib/api";
 import Link from "next/link";
+import { RefreshCw } from "lucide-react";
 import { PageHeader, Stat, Panel, Empty, PlatformMark, StatusTag, Meter } from "@/components/app/ui";
 
 export default function Overview() {
@@ -10,6 +11,8 @@ export default function Overview() {
   const [videos, setVideos] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [posts, setPosts] = useState<any[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +53,55 @@ export default function Overview() {
     return () => { cancelled = true; };
   }, []);
 
+  const syncNow = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    setSyncMessage("");
+    try {
+      const currentAccounts = await api.socialAccounts();
+      const linked = currentAccounts.filter((account: any) =>
+        account.mode === "oauth" &&
+        account.status === "connected" &&
+        ["instagram", "youtube"].includes(account.platform) &&
+        !/^(instagram|youtube)-user-/i.test(account.handle || "")
+      );
+      if (linked.length === 0) {
+        setSyncMessage("No active live-linked Instagram or YouTube accounts were found. Check Accounts.");
+        return;
+      }
+      const results = await Promise.allSettled(linked.map((account: any) => api.syncSocial(account.id)));
+      const freshResults = results.filter((result: any) =>
+        result.status === "fulfilled" && String(result.value?.sync_source || "").startsWith("live ")
+      ).length;
+      const syncedRows = results.reduce((count: number, result: any) =>
+        count + (result.status === "fulfilled" ? Number(result.value?.history_sync?.records_processed || 0) : 0), 0
+      );
+      const providerNotes = results.map((result: any) =>
+        result.status === "fulfilled" ? result.value?.sync_note : result.reason?.message
+      ).filter(Boolean);
+      const [nextSummary, nextEvents, nextVideos, nextAccounts, nextPosts] = await Promise.all([
+        api.analyticsSummary().catch(() => null),
+        api.calendarEvents().catch(() => []),
+        api.listVideos().catch(() => []),
+        api.socialAccounts().catch(() => []),
+        api.analyticsPosts().catch(() => []),
+      ]);
+      setSummary(nextSummary);
+      setEvents(nextEvents);
+      setVideos(nextVideos);
+      setAccounts(nextAccounts);
+      setPosts(nextPosts);
+      setSyncMessage(
+        `Refreshed ${freshResults} of ${linked.length} connected accounts · ${syncedRows} provider post records processed.` +
+        (providerNotes.length ? ` Note: ${providerNotes[0]}` : "")
+      );
+    } catch (reason: any) {
+      setSyncMessage(reason?.message || "Could not refresh connected account data.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const upcoming = [...events]
     .filter((e) => e.status === "scheduled" || e.status === "processing")
     .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
@@ -76,11 +128,20 @@ export default function Overview() {
         description="See channel health, video analyses, upcoming releases and performance history you can actually verify."
         actions={
           <>
+            <button className="btn btn-ghost" onClick={syncNow} disabled={syncing}>
+              <RefreshCw size={14} className={syncing ? "animate-spin" : ""} />
+              {syncing ? "Refreshing accounts…" : "Refresh accounts"}
+            </button>
             <Link href="/app/analyze" className="btn btn-signal">Analyze a video</Link>
             <Link href="/app/calendar" className="btn btn-ghost">Open calendar</Link>
           </>
         }
       />
+      {syncMessage && (
+        <p className="mb-4 border border-[var(--hairline-strong)] bg-[var(--paper)] px-3.5 py-3 text-[11px] leading-relaxed text-[var(--muted)]" role="status" aria-live="polite">
+          {syncMessage}
+        </p>
+      )}
 
       {/* connected accounts banner */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
@@ -176,20 +237,16 @@ export default function Overview() {
             ].map((s, i) => (
               <li key={s.label} className="flex items-center gap-3 py-2.5 border-b border-[var(--hairline)] last:border-b-0">
                 <span
-                  className="w-4 h-4 border flex items-center justify-center mono text-[8px] shrink-0"
-                  style={{
-                    borderColor: s.done ? "var(--sage-deep)" : "var(--hairline-strong)",
-                    background: s.done ? "var(--sage)" : "transparent",
-                    color: s.done ? "var(--sage-ink)" : "var(--muted)",
-                  }}
+                  aria-label={s.done ? "Task completed" : `Task ${i + 1}`}
+                  className={`w-6 h-6 rounded-full border flex items-center justify-center mono text-[10px] font-semibold shrink-0 ${s.done ? "border-[var(--sage-deep)] bg-[var(--sage)] text-[var(--sage-ink)]" : "border-[var(--hairline-strong)] text-[var(--muted)]"}`}
                 >
                   {s.done ? "✓" : String(i + 1).padStart(2, "0")}
                 </span>
-                <Link href={s.href} className={`text-[12px] flex-1 hover:text-[var(--signal)] ${s.done ? "text-[var(--muted)]" : ""}`}>
+                <Link href={s.href} className={`text-[12px] flex-1 font-medium hover:text-[var(--signal)] ${s.done ? "text-[var(--sage-ink)] line-through decoration-[var(--sage-deep)]" : ""}`}>
                   {s.label}
                 </Link>
                 {s.done ? (
-                  <span className="tag tag-sage shrink-0">Complete</span>
+                  <span className="tag tag-sage shrink-0 font-semibold">✓ Complete</span>
                 ) : (
                   <span className="mono text-[9px] text-[var(--muted)]">Next →</span>
                 )}
