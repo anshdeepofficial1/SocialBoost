@@ -76,7 +76,10 @@ def _build_features(df: pd.DataFrame):
 
 
 def train_models(db: Session, workspace_id: str | None = None):
-    q = db.query(HistoricalPost)
+    # Only posts with a real view count are supervised training examples.
+    # Provider APIs may omit views or private metrics; do not turn NULLs into
+    # synthetic zero-view examples.
+    q = db.query(HistoricalPost).filter(HistoricalPost.views.isnot(None))
     if workspace_id:
         q = q.filter(HistoricalPost.workspace_id == workspace_id)
     rows = q.all()
