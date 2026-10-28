@@ -100,7 +100,7 @@ export default function Integrations() {
     setMsg(null);
     try {
       const result: any = await api.syncSocial(id);
-      if (result?.sync_source === "live Instagram API data") {
+      if (platform === "instagram" && result?.sync_source === "live Instagram API data") {
         const metrics = result.live_metrics || {};
         const viewNote = metrics.view_metrics_available
           ? ` View counts were available for ${metrics.view_metrics_available} recent posts.`
@@ -109,7 +109,7 @@ export default function Integrations() {
           kind: "ok",
           text: `Instagram data synced: ${Number(result.followers || 0).toLocaleString()} followers and ${Number(result.post_count || 0).toLocaleString()} media items.${viewNote}`,
         });
-      } else if (result?.sync_source === "live YouTube API data") {
+      } else if (platform === "youtube" && result?.sync_source === "live YouTube API data") {
         const metrics = result.live_metrics || {};
         const averageNote = metrics.avg_views != null
           ? ` Average views across the latest ${Number(metrics.avg_views_sample_size || 0).toLocaleString()} uploads: ${Number(metrics.avg_views).toLocaleString()}.`
@@ -118,16 +118,18 @@ export default function Integrations() {
           kind: "ok",
           text: `YouTube data synced: ${Number(result.followers || 0).toLocaleString()} subscribers, ${Number(result.post_count || 0).toLocaleString()} videos, and ${Number(metrics.total_views || 0).toLocaleString()} total channel views.${averageNote}`,
         });
-      } else if (result?.sync_note) {
-        setMsg({ kind: "err", text: result.sync_note });
       } else {
         const providerName = platform === "youtube" ? "YouTube" : "Instagram";
         const fallback = platform === "youtube"
           ? "YouTube could not refresh live channel statistics. Your last saved numbers have been kept. Check the Render backend logs for the YouTube Data API error; reconnect Google only if the logs indicate authorization has expired."
           : "Instagram could not refresh live statistics. Your last saved numbers have been kept. Check the Render backend logs for the Meta Graph API error before changing permissions or reconnecting.";
+        const note = typeof result?.sync_note === "string" ? result.sync_note : "";
+        const noteMatchesPlatform = platform !== "youtube" || !/instagram|meta graph api/i.test(note);
         setMsg({
           kind: "err",
-          text: result?.sync_note || (providerName + " sync did not return live data. " + fallback),
+          text: (note && noteMatchesPlatform)
+            ? note
+            : (providerName + " sync did not return live data. " + fallback),
         });
       }
       load();
