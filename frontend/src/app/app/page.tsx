@@ -55,8 +55,12 @@ export default function Overview() {
         {[
           { p: "instagram", label: "Instagram Reels", acc: ig },
           { p: "youtube", label: "YouTube Shorts", acc: yt },
-        ].map(({ p, label, acc }) => (
-          <div key={p} className={`panel panel-hover ui-fade p-4 flex items-center gap-4 ${!acc ? "border-dashed" : ""}`}>
+        ].map(({ p, label, acc }, index) => (
+          <div
+            key={p}
+            className={`panel panel-hover ui-fade p-4 min-h-[92px] flex items-center gap-4 ${!acc ? "border-dashed" : ""}`}
+            style={{ animationDelay: `${index * 90}ms` }}
+          >
             <PlatformMark platform={p} size={34} />
             <div className="min-w-0 flex-1">
               <p className="text-[13px] font-medium truncate">
@@ -76,9 +80,9 @@ export default function Overview() {
               </p>
             </div>
             {acc ? (
-              <div className="text-right shrink-0">
-                <p className="mono text-[11px]">{acc.avg_views == null ? "—" : Number(acc.avg_views).toLocaleString()}</p>
-                <p className="mono text-[8px] uppercase text-[var(--muted)]">avg views</p>
+              <div className="min-w-[4.25rem] text-right shrink-0">
+                <p className="mono text-[11px] whitespace-nowrap">{acc.avg_views == null ? "—" : Number(acc.avg_views).toLocaleString()}</p>
+                <p className="text-[9px] uppercase tracking-[0.06em] text-[var(--muted)] whitespace-nowrap">Avg. views</p>
               </div>
             ) : (
               <Link href="/app/integrations" className="btn btn-ghost btn-sm shrink-0">Connect</Link>
