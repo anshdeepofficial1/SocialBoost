@@ -1,4 +1,4 @@
-"""Additive, idempotent schema maintenance for SQLite development databases.
+"""Additive, idempotent schema maintenance for existing SQLite and PostgreSQL databases.
 
 ``Base.metadata.create_all`` creates missing tables but never alters existing
 ones. This module brings an existing development database up to the current
@@ -23,7 +23,7 @@ from .. import models  # noqa: F401,E402
 
 log = logging.getLogger("socialboost.schema")
 
-# table -> {column_name: SQLite column definition}
+# table -> {column_name: SQL type used for older schemas}
 _REQUIRED_COLUMNS: dict[str, dict[str, str]] = {
     "predictions": {"workspace_id": "VARCHAR"},
     "drafts": {"workspace_id": "VARCHAR"},
@@ -32,7 +32,7 @@ _REQUIRED_COLUMNS: dict[str, dict[str, str]] = {
 }
 
 
-def _sqlite_type_sql(column) -> str:
+def _column_type_sql(column) -> str:
     try:
         return column.type.compile(engine.dialect)
     except Exception:
@@ -116,7 +116,7 @@ def ensure_schema() -> list[str]:
         for column in table.columns:
             if column.name in present:
                 continue
-            ddl = column.name + " " + _sqlite_type_sql(column)
+            ddl = column.name + " " + _column_type_sql(column)
             with engine.begin() as conn:
                 conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN {ddl}'))
             changes.append(f"{table_name}.{column.name} added")

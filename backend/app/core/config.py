@@ -5,9 +5,6 @@ from typing import List
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
-# Paths in .env are written relative to the project root (the parent of
-# backend/). Resolving them against that root means the server behaves the same
-# whether it is started from the repo root or from backend/.
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -18,6 +15,16 @@ def _resolve(value: str) -> str:
     return str((PROJECT_ROOT / path).resolve())
 
 
+def normalize_database_url(value: str) -> str:
+    """Normalize hosted-Postgres URLs to SQLAlchemy's psycopg v3 driver."""
+    url = (value or "").strip()
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
+
+
 class Settings(BaseSettings):
     APP_NAME: str = "SocialBoost AI"
     ENV: str = "development"
@@ -25,6 +32,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str = Field(default="change-me-in-production-please-use-long-random")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+    # SQLite is convenient locally. Production must use durable PostgreSQL or
+    # a SQLite file on an explicitly mounted persistent disk.
     DATABASE_URL: str = "sqlite:///./backend/socialboost.db"
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_MB: int = 200
@@ -32,17 +41,8 @@ class Settings(BaseSettings):
     DEMO_MODE: bool = True
     MODEL_DIR: str = "./ml/artifacts"
     FRONTEND_URL: str = "http://localhost:3000"
-
-    # Explicit https base for OAuth redirect URIs. Behind a reverse proxy the
-    # incoming request usually looks like http, so set this to the public
-    # backend URL, e.g. https://socialboost-api.onrender.com.
     OAUTH_REDIRECT_BASE: str = ""
-
-    # Publishing. Real provider publishing is not implemented, so non-sandbox
-    # scheduled jobs must never be reported as published.
     LIVE_PUBLISHING_ENABLED: bool = False
-
-    # Minimum rows required before a model will train.
     MIN_TRAINING_ROWS: int = 10
 
     @property
@@ -59,13 +59,30 @@ class Settings(BaseSettings):
 
     @property
     def resolved_database_url(self) -> str:
-        url = self.DATABASE_URL
+        url = normalize_database_url(self.DATABASE_URL)
         if not url.startswith("sqlite"):
             return url
         prefix, _, raw = url.partition(":///")
         if not raw or raw == ":memory:" or os.path.isabs(raw):
             return url
         return f"{prefix}:///{_resolve(raw)}"
+
+    @property
+    def database_backend(self) -> str:
+        url = self.resolved_database_url
+        if url.startswith("postgresql"):
+            return "postgresql"
+        if url.startswith("sqlite"):
+            return "sqlite"
+        return "other"
+
+    @property
+    def sqlite_path_is_data_mount(self) -> bool:
+        return self.resolved_database_url.startswith("sqlite:////data/")
+
+    @property
+    def using_default_secret(self) -> bool:
+        return self.SECRET_KEY.startswith("change-me-in-production")
 
     class Config:
         env_file = ".env"

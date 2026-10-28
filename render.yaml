@@ -1,4 +1,7 @@
 # Render blueprint for the SocialBoost FastAPI backend.
+# This blueprint uses a paid web-service plan because the /data disk below is persistent.
+# If you keep a Render Free web service, use a durable external PostgreSQL DATABASE_URL instead;
+# Free web services cannot mount persistent disks.
 # Import the repo at https://dashboard.render.com/blueprint — Render reads
 # this file from the repository root. Secrets (SECRET_KEY, OAuth provider
 # credentials) are generated or left empty by Render, never committed.

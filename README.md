@@ -17,6 +17,43 @@ Interactive API docs: <http://127.0.0.1:8000/docs>
 The server creates missing tables and upgrades an existing development database
 on startup (`app/db/schema.py`). No manual reset is needed.
 
+### Production data persistence
+
+The default SQLite database is for local development only. Render Free web services
+use an ephemeral filesystem: local SQLite files can disappear when the service spins
+down, restarts, or redeploys. This can make an existing account appear to have invalid
+credentials because its `users` row no longer exists. A Vercel frontend redeploy does
+not erase a database by itself; this is a backend-storage configuration issue.
+
+For a free hosted setup, create a durable PostgreSQL project (for example, Neon), copy
+its connection URL, and set it as the backend-only `DATABASE_URL` environment variable
+on Render. The backend accepts `postgres://` and `postgresql://` URLs and normalizes
+them to the installed psycopg 3 driver. Never put this value in a `NEXT_PUBLIC_*`
+variable or commit it to GitHub.
+
+After setting `DATABASE_URL`, redeploy the Render backend and check
+`https://YOUR-BACKEND/health`. It should report `"database": "postgresql"` and
+`"database_storage": "managed_postgresql"`. If it reports SQLite, durable account
+storage has not been enabled yet.
+
+**Keep `SECRET_KEY` unchanged across redeploys.** It signs login tokens and derives
+the encryption key for stored OAuth credentials. Changing it invalidates existing JWTs
+and makes previously encrypted OAuth tokens unreadable.
+
+If you have a backup copy of the old `socialboost.db`, migrate its rows before asking
+users to register again:
+
+```bash
+# Run from the repository root; DATABASE_URL must point to an empty PostgreSQL database.
+DATABASE_URL='postgresql://…' python backend/scripts/migrate_sqlite_to_postgres.py /path/to/socialboost.db --dry-run
+DATABASE_URL='postgresql://…' python backend/scripts/migrate_sqlite_to_postgres.py /path/to/socialboost.db
+```
+
+The migration script never changes the SQLite source and refuses to write into a
+non-empty target database. If Render has already discarded the only copy of the old
+SQLite file, those deleted users cannot be reconstructed from the new empty database;
+the persistent database prevents this from happening to future accounts.
+
 ### Tests
 
 ```bash
