@@ -910,13 +910,22 @@ def fetch_live_stats(platform: str, tokens: dict) -> dict | None:
             "data_source": "Instagram Graph API",
         }
     except Exception as exc:
-        # Keep a safe diagnostic category for the sync endpoint/UI. Never expose
-        # provider response bodies, URLs, or credentials to the browser.
+        # Keep safe diagnostics for the sync endpoint/UI. Never expose provider
+        # response bodies, URLs, or credentials to the browser.
         tokens["_sync_error_type"] = type(exc).__name__
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None)
+        if status_code is not None:
+            tokens["_sync_http_status"] = int(status_code)
+        if platform == "youtube" and status_code == 401:
+            # A 401 means the OAuth access token was not accepted even after
+            # refresh was attempted. Do not keep presenting this grant as live.
+            tokens["_sync_needs_reauth"] = True
         log.warning(
-            "live stats fetch failed for %s (error_type=%s)",
+            "live stats fetch failed for %s (error_type=%s, http_status=%s)",
             platform,
             type(exc).__name__,
+            status_code,
             exc_info=True,
         )
         return None
