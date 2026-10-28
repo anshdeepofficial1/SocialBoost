@@ -38,6 +38,9 @@ export default function Predictions() {
     setLoading(true);
     setErr("");
     try {
+      // The status endpoint rebuilds the Growth Coach artifact after a deploy
+      // or when its target version changes, before the scoring requests start.
+      await api.coachStatus().catch(() => null);
       const results = await Promise.all(selectedPlatforms.map(async (selectedPlatform) => {
         const payload: any = {
           platform: selectedPlatform,
