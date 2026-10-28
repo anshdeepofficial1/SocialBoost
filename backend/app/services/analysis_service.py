@@ -8,6 +8,8 @@ binaries) and never reports a made-up number.
 
 import logging
 import os
+import re
+import threading
 
 import cv2
 import numpy as np
@@ -18,30 +20,57 @@ from . import ml_service
 
 log = logging.getLogger("socialboost.analysis")
 
+_OCR_ENGINE = None
+_OCR_INIT_ATTEMPTED = False
+_OCR_LOCK = threading.Lock()
+_WHISPER_MODEL = None
+_WHISPER_INIT_ATTEMPTED = False
+_WHISPER_LOCK = threading.Lock()
 
-def create_job(db: Session, video_id: str) -> AnalysisJob:
-    job = AnalysisJob(video_id=video_id, status="queued", progress=0, current_step="queued")
-    db.add(job)
-    db.commit()
-    db.refresh(job)
-    return job
 
-
-def _sample_frames(cap, n: int = 8):
-    frames = []
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-    if total <= 0:
+def _sample_opening_frames(path: str, seconds: float = 3.0, n: int = 8):
+    """Sample frames only from the actual opening window, with timestamps."""
+    cap = cv2.VideoCapture(path)
+    try:
+        if not cap.isOpened():
+            return []
+        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        if total <= 0:
+            return []
+        last = min(total - 1, max(0, int(fps * seconds)) if fps > 0 else min(total - 1, n - 1))
+        indices = np.unique(np.linspace(0, last, min(n, last + 1), dtype=int))
+        frames = []
+        for index in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(index))
+            ok, frame = cap.read()
+            if ok:
+                frames.append((float(index / fps) if fps > 0 else 0.0, frame))
         return frames
-    idxs = np.linspace(0, max(total - 1, 0), min(n, total), dtype=int)
-    for i in idxs:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, int(i))
-        ok, frame = cap.read()
-        if ok:
-            frames.append((int(i), frame))
-    return frames
+    finally:
+        cap.release()
 
 
-def _ocr_available() -> bool:
+def _get_ocr_engine():
+    global _OCR_ENGINE, _OCR_INIT_ATTEMPTED
+    if _OCR_INIT_ATTEMPTED:
+        return _OCR_ENGINE
+    with _OCR_LOCK:
+        if _OCR_INIT_ATTEMPTED:
+            return _OCR_ENGINE
+        _OCR_INIT_ATTEMPTED = True
+        try:
+            from rapidocr_onnxruntime import RapidOCR
+
+            _OCR_ENGINE = RapidOCR()
+            log.info("RapidOCR engine initialised")
+        except Exception:
+            log.warning("RapidOCR is unavailable; trying the optional Tesseract fallback", exc_info=True)
+            _OCR_ENGINE = None
+    return _OCR_ENGINE
+
+
+def _tesseract_available() -> bool:
     try:
         import pytesseract
 
