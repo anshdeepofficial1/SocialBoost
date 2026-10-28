@@ -52,11 +52,13 @@ export default function Recommendations() {
         youtube: Number(initialSummary?.by_platform?.youtube?.posts ?? initialPosts.filter((post: any) => post.platform === "youtube").length),
       };
       await syncConnectedAccountsIfNeeded(initialAccounts, storedPostCounts);
-      const [summary, posts, accounts, model] = await Promise.all([
+      const [summary, posts, accounts, model, coach, winners] = await Promise.all([
         api.analyticsSummary().catch(() => initialSummary),
         api.analyticsPosts().catch(() => initialPosts),
         api.socialAccounts().catch(() => initialAccounts),
         api.modelDetail().catch(() => ({ available: false })),
+        api.coachStatus().catch(() => ({ available: false })),
+        api.coachWinners().catch(() => ({ available: false, top_posts: [] })),
       ]);
 
       const all: Recommendation[] = [];
@@ -185,6 +187,30 @@ export default function Recommendations() {
           evidence: `Random Forest trained with ${model.n_samples} post samples. Highest feature importances: ${features}. R²: ${model.metrics?.r2 == null ? "unavailable" : Number(model.metrics.r2).toFixed(3)}.`,
           href: "/app/predictions",
           action: "Inspect model",
+        });
+      }
+
+      if (coach?.available) {
+        const topPost = (winners?.top_posts || [])[0];
+        const topFeatures = (coach.top_features || []).slice(0, 4)
+          .map((feature: any) => `${String(feature.factor).replace(/_/g, " ")} (${Number(feature.importance).toFixed(2)})`)
+          .join(", ");
+        all.push({
+          area: "model",
+          problem: "Run the next growth experiment from your own cross-platform history",
+          fix: "Use the Growth Coach diagnosis to choose one change for your next Reel or Short, then compare its real metrics with this baseline. The growth index is a within-workspace ranking, not a promise of views or proof of causation.",
+          evidence: `Growth Coach ${coach.version || "active"} trained on ${coach.n_samples ?? "—"} posts. Top signals: ${topFeatures || "not available"}. ${topPost ? `Strongest recorded post: ${topPost.platform === "youtube" ? "YouTube" : "Instagram"} · ${countLabel(topPost.views)} views · ${(topPost.title || topPost.caption || "Untitled post").slice(0, 90)}.` : ""}`,
+          href: "/app/predictions",
+          action: "Score next content",
+        });
+      } else {
+        all.push({
+          area: "model",
+          problem: "Build the personalised Growth Coach from connected posts",
+          fix: "Sync Instagram and YouTube so SocialBoost can train on available post metrics and compare upcoming ideas with your own stronger content. CSV import remains optional for older history.",
+          evidence: `${coach?.n_samples_available ?? totalWithViews} posts with real view counts available; ${coach?.required ?? 10} are required.`,
+          href: "/app/datasets",
+          action: "Sync data & train",
         });
       }
 
