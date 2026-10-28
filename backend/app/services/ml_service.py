@@ -219,12 +219,29 @@ def _illustrative(video_features: dict, platform: str, reason: str) -> dict:
 def predict(video_features: dict, platform: str, db: Session, workspace_id: str | None = None) -> dict:
     views_path, cat_path = artifacts_for(workspace_id)
     if not (os.path.exists(views_path) and os.path.exists(cat_path)):
-        return _illustrative(
-            video_features,
-            platform,
-            "No model has been trained on this workspace's history yet. "
-            f"Import at least {settings.MIN_TRAINING_ROWS} historical posts and train before trusting a number.",
-        )
+        # Hosted services may lose local model artifacts during a restart while
+        # their persistent SQL database still contains the real training data.
+        # Attempt a workspace-scoped rebuild before returning a no-model result.
+        try:
+            training = train_models(db, workspace_id)
+        except Exception:
+            training = {"status": "failed"}
+        if training.get("status") != "trained":
+            found = training.get("n_samples", 0)
+            return _illustrative(
+                video_features,
+                platform,
+                training.get("message") or (
+                    f"Model unavailable. Need at least {settings.MIN_TRAINING_ROWS} historical posts with real view counts; found {found}."
+                ),
+            )
+        views_path, cat_path = artifacts_for(workspace_id)
+        if not (os.path.exists(views_path) and os.path.exists(cat_path)):
+            return _illustrative(
+                video_features,
+                platform,
+                "Training finished, but model artifacts were not available for inference.",
+            )
 
     reg_art = joblib.load(views_path)
     cat_art = joblib.load(cat_path)
