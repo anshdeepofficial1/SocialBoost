@@ -268,9 +268,9 @@ function CalendarSketch() {
   const days = Array.from({ length: 35 }, (_, i) => i);
   return (
     <div className="panel p-5">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <span className="label">Month view</span>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]"><span className="dot" style={{ background: "var(--signal)" }} />Reels</span>
           <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]"><span className="dot" style={{ background: "var(--cobalt)" }} />Shorts</span>
         </div>
@@ -279,20 +279,20 @@ function CalendarSketch() {
         {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
           <span key={i} className="text-[10px] font-semibold text-[var(--muted)] text-center pb-1">{d}</span>
         ))}
-        {days.map((d) => (
-          <div key={d} className={`aspect-square rounded-[6px] p-1.5 relative ${inMonth(d) ? "bg-[var(--paper-2)]" : "bg-transparent"}`}>
-            <span className="mono text-[9px] text-[var(--muted)]">{d + 1}</span>
-          </div>
-        ))}
+        {days.map((d) => {
+          const date = d < 31 ? d + 1 : null;
+          return (
+            <div key={d} className={`aspect-square rounded-[6px] p-1.5 relative ${date !== null ? "bg-[var(--paper-2)]" : "bg-transparent"}`}>
+              {date !== null && <span className="mono text-[9px] text-[var(--muted)]">{date}</span>}
+            </div>
+          );
+        })}
       </div>
       <p className="mt-4 pt-4 border-t border-[var(--hairline)] text-[12px] leading-relaxed text-[var(--muted)] text-center">
         No releases scheduled. Drafts, sandbox jobs and published posts appear here.
       </p>
     </div>
   );
-}
-function inMonth(d: number) {
-  return d % 7 !== 0 && d % 7 !== 6;
 }
 
 /* ------------------------------------------------------------------- page */
@@ -702,9 +702,9 @@ export default function Landing() {
             <div className="col-span-12 lg:col-span-7 order-1 lg:order-2">
               <div className="ui-fade" style={{ animationDelay: "100ms" }}>
                 <CalendarSketch />
-                <div className="mt-3 flex items-center justify-between">
-                  <span className="label">Timezone-aware · conflict checks</span>
-                  <span className="label">Sandbox scheduling</span>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                  <span className="label leading-snug">Timezone-aware · conflict checks</span>
+                  <span className="label leading-snug">Sandbox scheduling</span>
                 </div>
               </div>
             </div>
