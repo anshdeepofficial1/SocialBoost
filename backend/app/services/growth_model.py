@@ -125,15 +125,15 @@ def _rows_to_frame(rows: list[HistoricalPost]) -> pd.DataFrame:
                 "content_type": (r.content_type or "short").lower(),
                 "content_category": (r.content_category or "").lower(),
                 "duration_seconds": float(r.duration_seconds or 0),
-                "views": float(r.views or 0),
-                "likes": float(r.likes or 0),
-                "comments": float(r.comments or 0),
-                "shares": float(r.shares or 0),
-                "saves": float(getattr(r, "saves", 0) or 0),
-                "reach": float(getattr(r, "reach", 0) or 0),
-                "followers_at_publish": float(r.followers_at_publish or 0),
-                "follows": float(getattr(r, "follows", 0) or 0),
-                "retention": float(getattr(r, "retention", 0) or 0),
+                "views": float(r.views) if r.views is not None else np.nan,
+                "likes": float(r.likes) if r.likes is not None else np.nan,
+                "comments": float(r.comments) if r.comments is not None else np.nan,
+                "shares": float(r.shares) if r.shares is not None else np.nan,
+                "saves": float(r.saves) if getattr(r, "saves", None) is not None else np.nan,
+                "reach": float(r.reach) if getattr(r, "reach", None) is not None else np.nan,
+                "followers_at_publish": float(r.followers_at_publish) if r.followers_at_publish is not None else np.nan,
+                "follows": float(r.follows) if getattr(r, "follows", None) is not None else np.nan,
+                "retention": float(r.retention) if getattr(r, "retention", None) is not None else np.nan,
                 "caption": r.caption or "",
                 "title": r.title or "",
                 "hashtags": r.hashtags or "",
@@ -217,30 +217,56 @@ def build_target(df: pd.DataFrame) -> tuple[pd.Series, dict, SignalCoverage]:
 
     coverage = SignalCoverage()
     n = max(len(df), 1)
+    threshold = max(3, n * 0.5)
 
-    save_rate = df["saves"] / views.replace(0, np.nan)
-    coverage.saves = bool((df["saves"] > 0).sum() >= max(3, n * 0.5))
-
-    follow_rate = df["follows"] / views.replace(0, np.nan)
-    coverage.follows = bool((df["follows"] > 0).sum() >= max(3, n * 0.5))
-
+    # Availability is based on populated provider values, not positive values:
+    # a real zero is a valid measurement, while NULL means the provider did
+    # not supply that metric.
+    save_values = df["saves"]
+    follow_values = df["follows"]
     retention = df["retention"]
-    coverage.retention = bool((retention > 0).sum() >= max(3, n * 0.5))
+    coverage.saves = bool(save_values.notna().sum() >= threshold)
+    coverage.follows = bool(follow_values.notna().sum() >= threshold)
+    coverage.retention = bool(retention.notna().sum() >= threshold)
 
-    engagements = df["likes"] + df["comments"] + df["shares"] + df["saves"]
-    engagement_rate = engagements / views.replace(0, np.nan)
+    save_rate = save_values / views.replace(0, np.nan)
+    follow_rate = follow_values / views.replace(0, np.nan)
+
+    # Build engagement only from rows where all base components were actually
+    # returned. When saves are sufficiently available, include them too.
+    base_engagement_cols = ["likes", "comments", "shares"]
+    engagement_valid = df[base_engagement_cols].notna().all(axis=1) & (views > 0)
+    engagements = df["likes"] + df["comments"] + df["shares"]
+    if coverage.saves:
+        engagement_valid &= save_values.notna()
+        engagements = engagements + save_values
+    engagement_rate = pd.Series(np.nan, index=df.index, dtype=float)
+    engagement_rate.loc[engagement_valid] = (
+        engagements.loc[engagement_valid] / views.loc[engagement_valid]
+    )
 
     components: list[tuple[str, pd.Series, float]] = [
         ("reach", _percentile(reach_index.fillna(1.0)), 1.0)
     ]
     if engagement_rate.notna().any():
-        components.append(("engagement", _percentile(engagement_rate.fillna(0.0)), 0.8))
+        engagement_rank = pd.Series(0.5, index=df.index, dtype=float)
+        engagement_rank.loc[engagement_valid] = _percentile(engagement_rate.loc[engagement_valid])
+        components.append(("engagement", engagement_rank, 0.8))
     if coverage.saves:
-        components.append(("saves", _percentile(save_rate.fillna(0.0)), 1.4))
+        save_rank = pd.Series(0.5, index=df.index, dtype=float)
+        valid_saves = save_rate.notna()
+        save_rank.loc[valid_saves] = _percentile(save_rate.loc[valid_saves])
+        components.append(("saves", save_rank, 1.4))
     if coverage.follows:
-        components.append(("follows", _percentile(follow_rate.fillna(0.0)), 1.6))
+        follow_rank = pd.Series(0.5, index=df.index, dtype=float)
+        valid_follows = follow_rate.notna()
+        follow_rank.loc[valid_follows] = _percentile(follow_rate.loc[valid_follows])
+        components.append(("follows", follow_rank, 1.6))
     if coverage.retention:
-        components.append(("retention", _percentile(retention.fillna(0.0)), 0.7))
+        retention_rank = pd.Series(0.5, index=df.index, dtype=float)
+        valid_retention = retention.notna()
+        retention_rank.loc[valid_retention] = _percentile(retention.loc[valid_retention])
+        components.append(("retention", retention_rank, 0.7))
 
     total_weight = sum(w for _, _, w in components)
     growth = sum(series * weight for _, series, weight in components) / total_weight
@@ -250,9 +276,9 @@ def build_target(df: pd.DataFrame) -> tuple[pd.Series, dict, SignalCoverage]:
         "baseline_views": baseline,
         "signals": coverage.as_dict(),
         "weights": {name: round(weight / total_weight, 4) for name, _, weight in components},
-        "engagement_rate_mean": float(engagement_rate.fillna(0).mean()),
-        "save_rate_mean": float(save_rate.fillna(0).mean()) if coverage.saves else None,
-        "follow_rate_mean": float(follow_rate.fillna(0).mean()) if coverage.follows else None,
+        "engagement_rate_mean": float(engagement_rate.dropna().mean()) if engagement_rate.notna().any() else None,
+        "save_rate_mean": float(save_rate.dropna().mean()) if coverage.saves and save_rate.notna().any() else None,
+        "follow_rate_mean": float(follow_rate.dropna().mean()) if coverage.follows and follow_rate.notna().any() else None,
     }
     return growth, detail, coverage
 
