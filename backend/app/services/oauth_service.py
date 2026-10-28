@@ -513,8 +513,15 @@ def _youtube_recent_videos(
                 "permalink": f"https://www.youtube.com/watch?v={video_id}",
             })
         return rows
-    except Exception:
-        log.info("recent YouTube video import failed", exc_info=True)
+    except Exception as exc:
+        # Channel totals can still be useful even if the uploads playlist or
+        # video statistics request failed. Log the failure at warning level so
+        # account sync can be diagnosed without exposing tokens to the client.
+        log.warning(
+            "recent YouTube video import failed (error_type=%s)",
+            type(exc).__name__,
+            exc_info=True,
+        )
         return []
 
 
