@@ -73,6 +73,10 @@ export const api = {
   oauthStart: (platform: string) => req(`/social/oauth/${platform}/start`),
   youtubeDashboard: (channel: string, limit = 10) => req(`/youtube/dashboard?channel=${encodeURIComponent(channel)}&limit=${limit}`),
   youtubeCompetitors: (limit = 6) => req(`/youtube/competitors?limit=${limit}`),
+  coachTrain: () => req("/coach/train", { method: "POST" }),
+  coachStatus: () => req("/coach/status"),
+  coachScore: (payload: any) => req("/coach/score", { method: "POST", body: JSON.stringify(payload) }),
+  coachWinners: () => req("/coach/winners"),
 };
 
 type LinkedAccount = {
