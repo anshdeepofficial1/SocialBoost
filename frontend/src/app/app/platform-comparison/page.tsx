@@ -18,7 +18,7 @@ export default function PlatformComparison() {
     try {
       const [a, b, c, d] = await Promise.all([
         api.caption(caption, "instagram"),
-        api.caption(caption, "youtube"),
+        api.caption(title.trim() || caption, "youtube"),
         api.predict({ platform: "instagram", caption, title: "", hashtags: "", duration_seconds: duration }),
         api.predict({ platform: "youtube", caption, title, hashtags: "", duration_seconds: duration }),
       ]);
@@ -49,7 +49,7 @@ export default function PlatformComparison() {
           <>
             <div className="p-5">
               <div className="flex items-baseline justify-between">
-                <span className="mono text-[9px] uppercase tracking-[0.1em] text-[var(--muted)]">Caption score</span>
+                <span className="mono text-[9px] uppercase tracking-[0.1em] text-[var(--muted)]">{platform === "youtube" ? "Title score" : "Caption score"}</span>
                 <span className="font-display font-semibold text-[28px] leading-none">{data.caption.caption_score}<span className="mono text-[10px] text-[var(--muted)]">/100</span></span>
               </div>
               <div className="mt-3"><Meter value={data.caption.caption_score} tone={platform === "instagram" ? "signal" : "cobalt"} /></div>
@@ -72,8 +72,9 @@ export default function PlatformComparison() {
             </div>
 
             <div className="px-5 py-4 border-t border-[var(--hairline)]">
-              <p className="label mb-2">Caption notes</p>
+              <p className="label mb-2">{platform === "youtube" ? "Title notes" : "Caption notes"}</p>
               <p className="text-[12px] leading-relaxed text-[var(--ink-2)]">{data.caption.improved_caption}</p>
+              {platform === "youtube" && !title.trim() && <p className="mono text-[8.5px] text-[var(--muted)] mt-2">No title entered, so the shared caption/description is used as a temporary title for this score.</p>}
               {data.caption.issues?.length > 0 && (
                 <ul className="mt-3 space-y-1.5">
                   {data.caption.issues.map((i: string, n: number) => (
