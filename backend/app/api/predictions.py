@@ -8,6 +8,7 @@ from ..models.video import Video
 from ..models.calendar import HistoricalPost
 from ..models.prediction import Prediction
 from ..services.ml_service import predict, train_models, model_status
+from ..services import growth_model
 
 router = APIRouter(prefix="/predictions", tags=["predictions"])
 
@@ -74,7 +75,27 @@ def run_prediction(payload: PredictIn, user=Depends(get_current_user), db: Sessi
 @router.post("/train")
 def train(user=Depends(get_current_user), db: Session = Depends(get_db)):
     ws_id = get_workspace_id(user, db)
-    return train_models(db, ws_id)
+    # Keep the existing view/category estimator response stable for the UI,
+    # while also training the content-aware growth coach from synced history.
+    result = train_models(db, ws_id)
+    try:
+        result["growth_coach"] = growth_model.train(db, ws_id)
+    except Exception:
+        import logging
+        logging.getLogger("socialboost.ml").exception(
+            "growth coach training failed for workspace %s", ws_id
+        )
+        result["growth_coach"] = {
+            "status": "failed",
+            "message": "The view estimator ran, but Growth Coach training failed. Check backend logs.",
+        }
+    result["algorithms"] = [
+        "RandomForestRegressor (views)",
+        "RandomForestClassifier (above/below median views)",
+        "HistGradientBoostingRegressor quantile models (growth index)",
+        "TF-IDF + TruncatedSVD (content text features)",
+    ]
+    return result
 
 
 @router.get("/status")
