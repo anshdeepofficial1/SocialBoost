@@ -5,6 +5,7 @@ import { PageHeader, Panel, Meter, Empty } from "@/components/app/ui";
 
 export default function HookLab() {
   const [text, setText] = useState("");
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(["instagram", "youtube"]);
   const [duration, setDuration] = useState(3);
   const [res, setRes] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -31,8 +32,16 @@ export default function HookLab() {
     setSavedMsg("");
     setErr("");
     try {
-      await api.createDraft({ platform: "instagram", caption: text.trim() });
-      setSavedMsg("Saved as a draft. Open the calendar to schedule it.");
+      if (selectedPlatforms.length === 0) {
+        setErr("Choose Instagram Reels, YouTube Shorts, or both before saving.");
+        return;
+      }
+      await Promise.all(selectedPlatforms.map((platform) => api.createDraft({
+        platform,
+        caption: platform === "instagram" ? text.trim() : "",
+        title: platform === "youtube" ? text.trim() : "",
+      })));
+      setSavedMsg(`Saved ${selectedPlatforms.length} draft${selectedPlatforms.length > 1 ? "s" : ""} for ${selectedPlatforms.map((platform) => platform === "instagram" ? "Instagram Reels" : "YouTube Shorts").join(" and ")}. Publishing is not triggered.`);
       loadDrafts();
     } catch (e: any) {
       setErr(e.message);
@@ -62,7 +71,7 @@ export default function HookLab() {
       <PageHeader
         eyebrow="Hook Lab · 02"
         title={<>The first three seconds decide.</>}
-        description="Write the opening line, set the window, and get a transparent heuristic score with editable alternatives. This is a writing aid, not a retention prediction."
+        description="Score a candidate opening, review why each rule changed the score, then save the line as an Instagram caption, a YouTube Shorts title, or both. The score is a transparent heuristic, not a retention prediction."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-4 items-start">
@@ -88,6 +97,25 @@ export default function HookLab() {
                   ))}
                 </div>
               </div>
+            </div>
+            <div className="mt-4">
+              <p className="field-label">Save draft for</p>
+              <div className="flex flex-wrap gap-3 mt-2">
+                {[
+                  { id: "instagram", label: "Instagram Reels" },
+                  { id: "youtube", label: "YouTube Shorts" },
+                ].map((platform) => (
+                  <label key={platform.id} className="flex items-center gap-2 text-[11.5px] border border-[var(--hairline)] px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={selectedPlatforms.includes(platform.id)}
+                      onChange={(event) => setSelectedPlatforms((current) => event.target.checked ? [...current, platform.id] : current.filter((item) => item !== platform.id))}
+                    />
+                    {platform.label}
+                  </label>
+                ))}
+              </div>
+              <p className="mono text-[8.5px] text-[var(--muted)] mt-1.5">Instagram saves the line as a caption; YouTube saves it as the video title.</p>
             </div>
             {err && <p className="mt-3 text-[12px] text-[var(--red)]">{err}</p>}
             {savedMsg && <p className="mt-3 text-[12px] text-[var(--sage-ink)]">{savedMsg}</p>}
