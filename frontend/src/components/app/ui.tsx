@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 
 export function PageHeader({
   eyebrow,
@@ -95,24 +95,40 @@ export function Meter({ value, max = 100, tone = "signal" }: { value: number; ma
   );
 }
 
-export function PlatformMark({ platform, size = 26 }: { platform: string; size?: number }) {
+export function PlatformMark({ platform, size = 26, imageUrl }: { platform: string; size?: number; imageUrl?: string | null }) {
+  const [imageFailed, setImageFailed] = useState(false);
   const ig = platform.toLowerCase().startsWith("insta") || platform === "instagram";
+  const canShowImage = Boolean(imageUrl) && !imageFailed;
   return (
     <span
-      className="inline-flex items-center justify-center shrink-0 font-semibold"
+      className="inline-flex items-center justify-center shrink-0 overflow-hidden font-semibold"
       style={{
         width: size,
         height: size,
-        borderRadius: Math.max(6, size * 0.28),
+        borderRadius: canShowImage ? "50%" : Math.max(6, size * 0.28),
         background: ig ? "var(--signal)" : "var(--cobalt)",
         color: "#fff",
         fontSize: size * 0.38,
         fontFamily: "var(--font-display)",
         letterSpacing: "-0.02em",
       }}
-      aria-hidden="true"
+      aria-label={canShowImage ? `${platform} profile picture` : platform}
+      title={platform}
     >
-      {ig ? "IG" : "YT"}
+      {canShowImage ? (
+        <img
+          src={imageUrl || undefined}
+          alt=""
+          width={size}
+          height={size}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setImageFailed(true)}
+          className="w-full h-full object-cover"
+        />
+      ) : (
+        ig ? "IG" : "YT"
+      )}
     </span>
   );
 }
