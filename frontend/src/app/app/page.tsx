@@ -116,6 +116,13 @@ export default function Overview() {
 
   const postsWithViews = posts.filter((post) => post.views != null);
   const topPosts = [...postsWithViews].sort((a, b) => Number(b.views) - Number(a.views)).slice(0, 4);
+  const nextActions = [
+    { done: connectedCount >= 2, label: "Connect both accounts", href: "/app/integrations" },
+    { done: (summary?.videos ?? 0) > 0, label: "Analyze your first video", href: "/app/analyze" },
+    { done: postsWithViews.length >= 10, label: "Build 10+ post training set", href: "/app/datasets" },
+    { done: upcoming.length > 0, label: "Schedule one release", href: "/app/calendar" },
+  ];
+  const pendingActions = nextActions.filter((action) => !action.done);
 
   return (
     <>
@@ -236,31 +243,29 @@ export default function Overview() {
         </Panel>
 
         <Panel title="Next actions">
-          <ol className="space-y-0">
-            {[
-              { done: connectedCount >= 2, label: "Connect both accounts", href: "/app/integrations" },
-              { done: (summary?.videos ?? 0) > 0, label: "Analyze your first video", href: "/app/analyze" },
-              { done: postsWithViews.length >= 10, label: "Build 10+ post training set", href: "/app/datasets" },
-              { done: upcoming.length > 0, label: "Schedule one release", href: "/app/calendar" },
-            ].map((s, i) => (
-              <li key={s.label} className="flex items-center gap-3 py-2.5 border-b border-[var(--hairline)] last:border-b-0">
-                <span
-                  aria-label={s.done ? "Task completed" : `Task ${i + 1}`}
-                  className={`w-6 h-6 rounded-full border flex items-center justify-center mono text-[10px] font-semibold shrink-0 ${s.done ? "border-[var(--sage-deep)] bg-[var(--sage)] text-[var(--sage-ink)]" : "border-[var(--hairline-strong)] text-[var(--muted)]"}`}
-                >
-                  {s.done ? "✓" : String(i + 1).padStart(2, "0")}
-                </span>
-                <Link href={s.href} className={`text-[12px] flex-1 font-medium hover:text-[var(--signal)] ${s.done ? "text-[var(--sage-ink)] line-through decoration-[var(--sage-deep)]" : ""}`}>
-                  {s.label}
-                </Link>
-                {s.done ? (
-                  <span className="tag tag-sage shrink-0 font-semibold">✓ Complete</span>
-                ) : (
+          {pendingActions.length === 0 ? (
+            <div className="py-3">
+              <p className="text-[13px] font-semibold text-[var(--sage-ink)]">You’re all caught up.</p>
+              <p className="text-[11px] text-[var(--muted)] leading-relaxed mt-1">All suggested setup actions are complete. New actions will appear when your workspace needs them.</p>
+            </div>
+          ) : (
+            <ol className="space-y-0">
+              {pendingActions.map((s, i) => (
+                <li key={s.label} className="flex items-center gap-3 py-2.5 border-b border-[var(--hairline)] last:border-b-0">
+                  <span
+                    aria-label={`Task ${i + 1}`}
+                    className="w-6 h-6 rounded-full border border-[var(--hairline-strong)] text-[var(--muted)] flex items-center justify-center mono text-[10px] font-semibold shrink-0"
+                  >
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <Link href={s.href} className="text-[12px] flex-1 font-medium hover:text-[var(--signal)]">
+                    {s.label}
+                  </Link>
                   <span className="mono text-[9px] text-[var(--muted)]">Next →</span>
-                )}
-              </li>
-            ))}
-          </ol>
+                </li>
+              ))}
+            </ol>
+          )}
         </Panel>
       </div>
 
