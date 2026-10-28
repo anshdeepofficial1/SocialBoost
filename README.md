@@ -112,12 +112,9 @@ Set `NEXT_PUBLIC_API_URL` if the backend is not on `http://127.0.0.1:8000`.
 * **Live publishing** — not implemented. See the publishing row above.
   OAuth-linked YouTube accounts can pull live channel statistics (subscribers,
   views) on Recalculate; everything unreachable falls back to imported history.
-* **Speech recognition** — not installed. Analysis reports
-  `speech_analysis: "unavailable"` instead of inventing a transcript.
-* **OCR** — only runs when Tesseract is installed; otherwise the report states
-  that on-screen text was not read.
-* **Audio detection** — `has_audio` is reported as `false` because `ffprobe` is
-  not part of this build.
+* **Speech recognition** — local `faster-whisper` (CPU/int8; default model `tiny`) transcribes uploaded video audio when the package/model can initialise. Speech is reported as unavailable rather than fabricated if inference cannot run.
+* **On-screen text (OCR)** — local `RapidOCR` is the primary engine, with optional Tesseract fallback. The report includes timestamps/confidence where available and matches detected text to nearby transcript segments by word overlap; this alignment is evidence, not a semantic truth guarantee.
+* **Audio detection** — PyAV inspects the uploaded media container for an actual audio stream. Unsupported or malformed containers are marked as undetected rather than assumed to contain audio.
 
 ## Configure public YouTube channel lookups
 
@@ -165,6 +162,19 @@ The current workspace models in `backend/app/services/ml_service.py` are:
 - **Training source:** workspace-scoped `HistoricalPost` rows with known, actual view counts from synced provider posts and/or CSV imports. Missing view counts are excluded from supervised training. Engagement-rate summaries only use rows with the required engagement components present.
 
 Video opening analysis additionally uses **faster-whisper** on CPU/int8 for local speech transcription and **RapidOCR** for OCR on sampled frames from the first three seconds. The system timestamps OCR text and speech segments and reports text overlap as evidence; it does not claim that this alignment alone predicts retention. Hook Lab and caption checks currently use transparent deterministic heuristics, not a generative language model. No external inference API is required for these local video-analysis steps, although the first use may need to download the local model assets and the hosted service must have enough memory to initialise them.
+
+## Machine-learning models and evidence pipeline
+
+SocialBoost has two workspace-scoped performance models plus a content-aware Growth Coach. They train only on that workspace's stored history and use real, non-null view-count labels. Syncing linked accounts populates the same `HistoricalPost` dataset used by Overview, Analytics, Recommendations and model training; CSV import is optional for older history that the provider API no longer exposes.
+
+1. **RandomForestRegressor (scikit-learn)** — estimates post views from features such as platform, duration, publication time/day, caption/title length and hashtag count. Model evaluation includes R² and mean absolute error (MAE).
+2. **RandomForestClassifier (scikit-learn)** — classifies whether a post is above or below that workspace's median view count.
+3. **HistGradientBoostingRegressor (scikit-learn)** — Growth Coach builds a relative growth index from view/engagement signals and produces median, 10th-percentile and 90th-percentile estimates. It uses time-ordered `TimeSeriesSplit` validation and permutation importance when the available history supports them.
+4. **TF-IDF + TruncatedSVD** — converts caption/title/hashtag text into numeric text features for the Growth Coach; `StandardScaler` scales numeric features. These are feature-extraction/preprocessing methods, not additional supervised prediction models.
+
+**Video perception is separate from view prediction:** local faster-whisper performs speech-to-text; RapidOCR (or optional Tesseract) reads on-screen text; timestamped word overlap checks where detected screen text appears near spoken text. Hook scoring is a transparent rule-based heuristic, not a learned retention prediction. None of these algorithms can guarantee that a post will go viral or cause account growth.
+
+Minimum training data is enforced by the backend settings (10 samples by default). Missing metrics remain unknown rather than being silently changed to zeros; the app does not fabricate private reach, saves or retention values when a provider does not expose them.
 
 ## ML scripts
 
