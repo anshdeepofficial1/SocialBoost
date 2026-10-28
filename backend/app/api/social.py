@@ -324,8 +324,16 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
             acc.followers = stats["followers"]
             acc.avg_views = stats["avg_views"]
             acc.engagement_rate = stats["engagement_rate"]
-        acc.status = "connected" if acc.status != "needs_reauth" else acc.status
-        acc_source = "imported history"
+            acc.status = "connected" if acc.status != "needs_reauth" else acc.status
+            acc_source = "imported history"
+        elif acc.platform == "youtube" and tokens and tokens.get("_sync_needs_reauth"):
+            acc.status = "needs_reauth"
+            acc_source = "stale provider data"
+        else:
+            # Keep last-known provider counters, but do not report them as a
+            # fresh sync or as manually imported history.
+            acc.status = "connected" if acc.status != "needs_reauth" else acc.status
+            acc_source = "last known provider data"
     acc.last_synced_at = datetime.utcnow()
     db.commit()
     body = _serialize(acc, db)
