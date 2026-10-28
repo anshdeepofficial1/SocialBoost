@@ -96,3 +96,40 @@ def test_reconnecting_youtube_preserves_existing_refresh_token(app_client):
     assert saved is not None
     assert saved["access_token"] == "new-access"
     assert saved["refresh_token"] == "long-lived-refresh"
+
+
+def test_load_fresh_youtube_tokens_refreshes_and_persists_expired_access_token(monkeypatch):
+    from uuid import uuid4
+
+    from app.db.session import SessionLocal
+
+    workspace_id = f"youtube-refresh-test-{uuid4()}"
+    with SessionLocal() as db:
+        oauth_service.store_tokens(
+            db,
+            workspace_id,
+            "youtube",
+            {
+                "access_token": "expired-access",
+                "refresh_token": "long-lived-refresh",
+                "expires_at": "2000-01-01T00:00:00",
+            },
+        )
+
+        def fake_refresh(tokens):
+            assert tokens["refresh_token"] == "long-lived-refresh"
+            return {
+                **tokens,
+                "access_token": "refreshed-access",
+                "expires_at": "2099-01-01T00:00:00",
+            }
+
+        monkeypatch.setattr(oauth_service, "refresh_youtube", fake_refresh)
+        refreshed = oauth_service.load_fresh_youtube_tokens(db, workspace_id)
+        saved = oauth_service.load_tokens(db, workspace_id, "youtube")
+
+    assert refreshed is not None
+    assert refreshed["access_token"] == "refreshed-access"
+    assert saved is not None
+    assert saved["access_token"] == "refreshed-access"
+    assert saved["refresh_token"] == "long-lived-refresh"
