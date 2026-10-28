@@ -504,6 +504,14 @@ def oauth_callback(
             binding["workspace_id"],
         )
         return _frontend_redirect("error", platform, "instagram_pages_permission_missing")
+    except oauth_service.InstagramBusinessManagementPermissionMissing:
+        import logging
+
+        logging.getLogger("socialboost.oauth").warning(
+            "Meta token is missing business_management while Page discovery returned empty for workspace %s",
+            binding["workspace_id"],
+        )
+        return _frontend_redirect("error", platform, "instagram_business_management_permission_missing")
     except oauth_service.InstagramPagesNotFound:
         import logging
 
