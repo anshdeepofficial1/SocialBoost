@@ -85,7 +85,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <span className="min-w-0 flex-1">
                   <span className="block text-[12px] font-medium truncate">{a ? `@${a.handle}` : label}</span>
                   <span className="block text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">
-                    {a ? (a.mode === "sandbox" ? "manual profile" : a.status === "needs_reauth" ? "reconnect needed" : "connected via Meta") : "not connected"}
+                    {a ? (a.mode === "sandbox" ? "manual profile" : a.status === "needs_reauth" ? "reconnect needed" : a.platform === "youtube" ? "connected via Google" : "connected via Meta") : "not connected"}
                   </span>
                 </span>
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: a ? (a.status === "needs_reauth" ? "var(--signal)" : "var(--sage-deep)") : "var(--hairline-strong)" }} />
