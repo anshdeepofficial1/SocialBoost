@@ -122,22 +122,24 @@ def ensure_schema() -> list[str]:
             changes.append(f"{table_name}.{column.name} added")
             log.info("added column %s.%s", table_name, column.name)
 
-    # Relax stale NOT NULL constraints by rebuilding the table.
-    for table_name in list(Base.metadata.tables):
-        if table_name not in existing_tables:
-            continue
-        table_inspector = inspect(engine)
-        stale = _stale_not_null(table_name, table_inspector)
-        if not stale:
-            continue
-        if _has_unknown_columns(table_name, table_inspector):
-            log.warning(
-                "skipping rebuild of %s: it has columns the models do not declare", table_name
-            )
-            continue
-        _rebuild_table(table_name)
-        changes.append(f"{table_name} rebuilt (nullable: {', '.join(stale)})")
-        log.info("rebuilt %s to relax %s", table_name, ", ".join(stale))
+    # SQLite cannot drop a NOT NULL constraint in place. Keep the table-rebuild
+    # workaround scoped to SQLite; do not rebuild PostgreSQL tables behind FKs.
+    if engine.dialect.name == "sqlite":
+        for table_name in list(Base.metadata.tables):
+            if table_name not in existing_tables:
+                continue
+            table_inspector = inspect(engine)
+            stale = _stale_not_null(table_name, table_inspector)
+            if not stale:
+                continue
+            if _has_unknown_columns(table_name, table_inspector):
+                log.warning(
+                    "skipping rebuild of %s: it has columns the models do not declare", table_name
+                )
+                continue
+            _rebuild_table(table_name)
+            changes.append(f"{table_name} rebuilt (nullable: {', '.join(stale)})")
+            log.info("rebuilt %s to relax %s", table_name, ", ".join(stale))
 
     # Backfill workspace ownership for rows created before the column existed.
     for table_name in ("predictions", "drafts"):

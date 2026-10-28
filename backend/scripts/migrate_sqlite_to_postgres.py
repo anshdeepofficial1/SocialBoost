@@ -56,14 +56,15 @@ def main() -> int:
         # Never merge or overwrite a database silently. Configure a fresh
         # Postgres database, or make a deliberate backup and plan separately.
         target_existing = set(inspect(target_engine).get_table_names())
-        for table in model_tables:
-            if table.name in target_existing:
-                count = target_engine.connect().execute(select(func.count()).select_from(table)).scalar_one()
-                if count:
-                    raise RuntimeError(
-                        "The target PostgreSQL database already contains rows in application tables. "
-                        "Migration stopped without inserting anything."
-                    )
+        with target_engine.connect() as target_conn:
+            for table in model_tables:
+                if table.name in target_existing:
+                    count = target_conn.execute(select(func.count()).select_from(table)).scalar_one()
+                    if count:
+                        raise RuntimeError(
+                            "The target PostgreSQL database already contains rows in application tables. "
+                            "Migration stopped without inserting anything."
+                        )
 
         counts: dict[str, int] = {}
         source_meta = MetaData()
