@@ -326,12 +326,70 @@ class YouTubeChannelNotFound(RuntimeError):
     """Raised when Google login succeeds but the selected account has no accessible YouTube channel."""
 
 
+def _youtube_recent_video_metrics(
+    access_token: str,
+    uploads_playlist_id: str,
+    max_results: int = 25,
+) -> dict:
+    """Average view counts for the latest uploaded videos, without search.list quota cost."""
+    if not uploads_playlist_id:
+        return {"avg_views": None, "avg_views_sample_size": 0}
+    headers = {"Authorization": f"Bearer {access_token}"}
+    try:
+        playlist_response = httpx.get(
+            f"{YOUTUBE_API}/playlistItems",
+            params={
+                "part": "contentDetails",
+                "playlistId": uploads_playlist_id,
+                "maxResults": max(1, min(int(max_results), 50)),
+            },
+            headers=headers,
+            timeout=TIMEOUT,
+        )
+        playlist_response.raise_for_status()
+        video_ids = [
+            item.get("contentDetails", {}).get("videoId")
+            for item in playlist_response.json().get("items") or []
+            if item.get("contentDetails", {}).get("videoId")
+        ]
+        if not video_ids:
+            return {"avg_views": None, "avg_views_sample_size": 0}
+
+        videos_response = httpx.get(
+            f"{YOUTUBE_API}/videos",
+            params={"part": "statistics", "id": ",".join(video_ids)},
+            headers=headers,
+            timeout=TIMEOUT,
+        )
+        videos_response.raise_for_status()
+        view_counts = []
+        for item in videos_response.json().get("items") or []:
+            value = (item.get("statistics") or {}).get("viewCount")
+            if value is None:
+                continue
+            try:
+                view_counts.append(max(0, int(value)))
+            except (TypeError, ValueError):
+                continue
+        if not view_counts:
+            return {"avg_views": None, "avg_views_sample_size": 0}
+        return {
+            "avg_views": int(sum(view_counts) / len(view_counts)),
+            "avg_views_sample_size": len(view_counts),
+        }
+    except Exception:
+        # Channel-level subscriber/video totals should still sync if recent
+        # video statistics are temporarily unavailable.
+        log.info("recent YouTube video view lookup failed", exc_info=True)
+        return {"avg_views": None, "avg_views_sample_size": 0}
+
+
 def fetch_identity(platform: str, access_token: str) -> dict:
     """Resolve the actual linked Instagram professional account or YouTube channel."""
     if platform == "youtube":
         r = httpx.get(
             f"{YOUTUBE_API}/channels",
-            params={"part": "snippet,statistics", "mine": "true"},
+            params={"part": "snippet,statistics,contentDetails", "mine": "true"},
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=TIMEOUT,
         )
@@ -344,6 +402,10 @@ def fetch_identity(platform: str, access_token: str) -> dict:
         it = items[0]
         snippet = it.get("snippet", {})
         stats = it.get("statistics", {})
+        uploads_playlist_id = (
+            it.get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads", "")
+        )
+        recent = _youtube_recent_video_metrics(access_token, uploads_playlist_id)
         custom = snippet.get("customUrl") or ""
         return {
             "handle": custom.lstrip("@") if custom else it.get("id", ""),
@@ -352,6 +414,8 @@ def fetch_identity(platform: str, access_token: str) -> dict:
             "followers": int(stats.get("subscriberCount", 0) or 0),
             "post_count": int(stats.get("videoCount", 0) or 0),
             "total_views": int(stats.get("viewCount", 0) or 0),
+            "avg_views": recent["avg_views"],
+            "avg_views_sample_size": recent["avg_views_sample_size"],
         }
 
     # Meta's documented /me/accounts query uses instagram_business_account
@@ -517,7 +581,7 @@ def fetch_live_stats(platform: str, tokens: dict) -> dict | None:
                 return None
             r = httpx.get(
                 f"{YOUTUBE_API}/channels",
-                params={"part": "statistics", "mine": "true"},
+                params={"part": "statistics,contentDetails", "mine": "true"},
                 headers={"Authorization": f"Bearer {access}"},
                 timeout=TIMEOUT,
             )
@@ -525,11 +589,18 @@ def fetch_live_stats(platform: str, tokens: dict) -> dict | None:
             items = r.json().get("items") or []
             if not items:
                 return None
-            stats = items[0].get("statistics", {})
+            channel = items[0]
+            stats = channel.get("statistics", {})
+            uploads_playlist_id = (
+                channel.get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads", "")
+            )
+            recent = _youtube_recent_video_metrics(access, uploads_playlist_id)
             return {
                 "followers": int(stats.get("subscriberCount", 0) or 0),
                 "post_count": int(stats.get("videoCount", 0) or 0),
                 "total_views": int(stats.get("viewCount", 0) or 0),
+                "avg_views": recent["avg_views"],
+                "avg_views_sample_size": recent["avg_views_sample_size"],
                 "refreshed_password_grant": bool(tokens.get("refresh_token")),
             }
 
