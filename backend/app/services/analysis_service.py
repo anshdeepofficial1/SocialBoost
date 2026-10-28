@@ -285,21 +285,70 @@ def _measure(cap, frames) -> dict:
     }
 
 
-def _hook_report(technical: dict, ocr_text: list[str], ocr_available: bool) -> dict:
-    """Rule-based opening assessment with its basis stated explicitly."""
+def _hook_report(
+    technical: dict,
+    ocr_items: list[dict],
+    ocr_available: bool,
+    ocr_engine: str,
+    speech: dict,
+) -> dict:
+    """Combine timestamped on-screen text and local speech transcription."""
     basis: list[str] = []
     score = 50
+    ocr_text = [str(item.get("text") or "").strip() for item in ocr_items if str(item.get("text") or "").strip()]
+    opening = " ".join(ocr_text[:3])[:280]
 
-    if ocr_text:
-        opening = " ".join(ocr_text[:2])[:200]
+    if opening:
         if len(opening) > 20:
             score += 10
-            basis.append("+10 on-screen text longer than 20 characters")
+            basis.append("+10 readable opening text longer than 20 characters")
         if "?" in opening:
             score += 5
-            basis.append("+5 on-screen text asks a question")
+            basis.append("+5 opening text asks a question")
+
+    speech_segments = speech.get("segments") or []
+    transcript = speech.get("transcript") or ""
+    speech_onset = speech.get("speech_onset_seconds")
+    if speech_onset is not None:
+        if speech_onset <= 1.5:
+            score += 5
+            basis.append("+5 speech starts in the first 1.5 seconds")
+        elif speech_onset > 2.5:
+            score -= 5
+            basis.append("-5 first detected speech starts after 2.5 seconds")
+
+    if transcript and ocr_items:
+        def words(value: str) -> set[str]:
+            return {word.casefold() for word in re.findall(r"[^\W_]{3,}", value, flags=re.UNICODE)}
+
+        alignments = []
+        for item in ocr_items:
+            text = str(item.get("text") or "")
+            timestamp = float(item.get("time_seconds") or 0.0)
+            text_words = words(text)
+            nearby = [
+                segment for segment in speech_segments
+                if float(segment.get("start", 0)) <= timestamp + 1.25
+                and float(segment.get("end", 0)) >= max(0.0, timestamp - 1.25)
+            ]
+            spoken_text = " ".join(str(segment.get("text") or "") for segment in nearby)
+            overlap = text_words.intersection(words(spoken_text))
+            alignments.append({
+                **item,
+                "spoken_match": bool(overlap) if nearby and text_words else False,
+                "nearby_speech": spoken_text[:240],
+                "matched_words": sorted(overlap)[:10],
+            })
     else:
-        opening = ""
+        alignments = [
+            {
+                **item,
+                "spoken_match": None,
+                "nearby_speech": "",
+                "matched_words": [],
+            }
+            for item in ocr_items
+        ]
 
     ratio = technical.get("aspect_ratio")
     if ratio in ("9:16", "1080:1920"):
@@ -321,21 +370,38 @@ def _hook_report(technical: dict, ocr_text: list[str], ocr_available: bool) -> d
         basis.append("-10 average brightness below 40/255")
 
     if not ocr_available:
-        basis.append("on-screen text was not read (Tesseract is not installed)")
+        basis.append("on-screen text unavailable: the OCR engine could not initialise")
+    elif not ocr_text:
+        basis.append("OCR ran on opening frames but did not find readable overlay text")
+
+    if speech.get("status") == "unavailable":
+        basis.append("speech recognition could not initialise or decode this audio")
+    elif speech.get("status") == "no_audio":
+        basis.append("no audio stream was found")
+    elif speech.get("status") == "no_speech":
+        basis.append("audio was present but speech was not confidently detected")
 
     return {
         "hook_window_seconds": 3.0,
-        "speech_onset_seconds": None,
-        "speech_analysis": "unavailable",
-        "speech_note": "Speech recognition is not installed in this build; no transcript was produced.",
+        "speech_onset_seconds": speech_onset,
+        "speech_analysis": speech.get("status") or "unavailable",
+        "speech_note": speech.get("note") or "Speech transcription result unavailable.",
+        "speech_transcript": transcript,
+        "speech_segments": speech_segments,
+        "speech_language": speech.get("language"),
+        "speech_language_probability": speech.get("language_probability"),
+        "speech_transcript_truncated": bool(speech.get("truncated")),
         "ocr_available": ocr_available,
+        "ocr_engine": ocr_engine,
         "opening_text": opening,
         "ocr_samples": ocr_text,
+        "ocr_segments": ocr_items,
+        "screen_text_alignment": alignments,
         "hook_score": max(0, min(100, score)),
         "score_basis": basis,
         "notes": (
-            "Score is a transparent rule set over measurable properties of the file, "
-            "not a prediction of audience response."
+            "The hook score is a transparent heuristic based on measured opening text, speech timing, "
+            "framing and brightness. It is not a learned prediction of audience response."
         ),
     }
 
