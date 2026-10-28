@@ -51,7 +51,34 @@ def train_coach(user=Depends(get_current_user), db: Session = Depends(get_db)):
 @router.get("/status")
 def coach_status(user=Depends(get_current_user), db: Session = Depends(get_db)):
     ws_id = get_workspace_id(user, db)
-    return growth_model.status(ws_id)
+    current = growth_model.status(ws_id)
+    available_rows = (
+        db.query(HistoricalPost)
+        .filter(
+            HistoricalPost.workspace_id == ws_id,
+            HistoricalPost.views.isnot(None),
+        )
+        .count()
+    )
+    # Render can discard local model artifacts while the database survives.
+    # Rebuild the workspace's coach model from its own real-view history.
+    if not current.get("available") and available_rows >= growth_model.MIN_ROWS:
+        try:
+            growth_model.train(db, ws_id)
+        except Exception:
+            import logging
+            logging.getLogger("socialboost.ml").exception(
+                "automatic growth-coach rebuild failed for workspace %s", ws_id
+            )
+        current = growth_model.status(ws_id)
+    current["n_samples_available"] = available_rows
+    current["required"] = growth_model.MIN_ROWS
+    if not current.get("available") and "note" not in current:
+        current["note"] = (
+            f"Growth Coach requires at least {growth_model.MIN_ROWS} posts with real view counts. "
+            f"Found {available_rows}; sync the connected accounts to build its dataset."
+        )
+    return current
 
 
 @router.post("/score")
