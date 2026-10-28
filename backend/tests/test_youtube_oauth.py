@@ -22,6 +22,49 @@ def test_youtube_identity_reports_missing_channel_separately(monkeypatch):
         raise AssertionError("An account without a YouTube channel should get a specific error")
 
 
+def test_youtube_average_views_uses_latest_uploaded_video_stats(monkeypatch):
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    calls = []
+
+    def fake_get(url, params, headers, timeout):  # noqa: ARG001
+        calls.append((url, params))
+        if url.endswith("/playlistItems"):
+            return Response({
+                "items": [
+                    {"contentDetails": {"videoId": "video-a"}},
+                    {"contentDetails": {"videoId": "video-b"}},
+                    {"contentDetails": {"videoId": "video-c"}},
+                ]
+            })
+        if url.endswith("/videos"):
+            return Response({
+                "items": [
+                    {"statistics": {"viewCount": "100"}},
+                    {"statistics": {"viewCount": "200"}},
+                    {"statistics": {"viewCount": "300"}},
+                ]
+            })
+        raise AssertionError(f"Unexpected YouTube API URL: {url}")
+
+    monkeypatch.setattr(oauth_service.httpx, "get", fake_get)
+
+    result = oauth_service._youtube_recent_video_metrics("token", "uploads-playlist")
+
+    assert result == {"avg_views": 200, "avg_views_sample_size": 3}
+    assert len(calls) == 2
+    assert calls[0][1]["maxResults"] == 25
+    assert calls[1][1]["id"] == "video-a,video-b,video-c"
+
+
 def test_reconnecting_youtube_preserves_existing_refresh_token(app_client):
     from uuid import uuid4
 
