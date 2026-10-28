@@ -421,6 +421,7 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
                     trained_at = None
                 stale = (
                     not coach_status.get("available")
+                    or not str(coach_status.get("version") or "").startswith("coach-v2-")
                     or trained_at is None
                     or datetime.utcnow() - trained_at.replace(tzinfo=None) > timedelta(hours=24)
                     or int(coach_status.get("n_samples") or 0) != usable_rows
