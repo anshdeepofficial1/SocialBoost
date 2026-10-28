@@ -117,7 +117,9 @@ def posts(
     return [
         {
             "id": row.id,
+            "post_id": row.post_id,
             "platform": row.platform,
+            "url": f"https://www.youtube.com/watch?v={row.post_id}" if row.platform == "youtube" and row.post_id else None,
             "published_at": row.published_at,
             "title": row.title,
             "caption": row.caption,
