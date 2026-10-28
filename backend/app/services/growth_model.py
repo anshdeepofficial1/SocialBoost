@@ -350,7 +350,10 @@ def _time_cv_scores(numeric, text, target, n_rows: int) -> dict:
 
 
 def train(db: Session, workspace_id: str | None = None) -> dict:
-    query = db.query(HistoricalPost)
+    # Growth targets are derived from post performance. A row without a real
+    # view count cannot form a valid supervised target and must never be
+    # silently converted into a zero-view example by _rows_to_frame().
+    query = db.query(HistoricalPost).filter(HistoricalPost.views.isnot(None))
     if workspace_id:
         query = query.filter(HistoricalPost.workspace_id == workspace_id)
     rows = query.order_by(HistoricalPost.published_at.asc()).all()
