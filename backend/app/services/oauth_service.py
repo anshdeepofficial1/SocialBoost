@@ -207,6 +207,26 @@ def refresh_youtube(tokens: dict) -> dict | None:
         return None
 
 
+def load_fresh_youtube_tokens(db: Session, workspace_id: str) -> dict | None:
+    """Load the workspace's YouTube grant and refresh it before use when needed.
+
+    Updated access tokens are persisted encrypted through store_tokens; raw
+    tokens are never returned to the frontend or logged.
+    """
+    tokens = load_tokens(db, workspace_id, "youtube")
+    if not tokens:
+        return None
+    if _token_is_fresh(tokens):
+        return tokens
+    refreshed = refresh_youtube(tokens)
+    if not refreshed or not refreshed.get("access_token"):
+        # Return the original token so callers can show a targeted auth error
+        # rather than incorrectly reporting that no YouTube account is linked.
+        return tokens
+    store_tokens(db, workspace_id, "youtube", refreshed)
+    return refreshed
+
+
 def exchange_code(platform: str, code: str, redirect_uri: str) -> dict:
     if platform == "instagram":
         return exchange_instagram(code, redirect_uri)
