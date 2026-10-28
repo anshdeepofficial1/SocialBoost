@@ -12,7 +12,7 @@ from ..core.config import settings
 from ..db.session import get_db
 from ..models.calendar import HistoricalPost
 from ..models.social import SocialAccount
-from ..services import oauth_service
+from ..services import oauth_service, ml_service
 from .deps import get_current_user, get_workspace_id
 
 router = APIRouter(prefix="/social", tags=["social"])
@@ -321,6 +321,37 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
     db.commit()
     body = _serialize(acc, db)
     body["sync_source"] = acc_source
+
+    # Provider-synced media is immediately eligible for supervised training.
+    # train_models refuses to fit until enough rows have real view counts.
+    if live:
+        try:
+            available_rows = (
+                db.query(HistoricalPost)
+                .filter(
+                    HistoricalPost.workspace_id == ws_id,
+                    HistoricalPost.views.isnot(None),
+                )
+                .count()
+            )
+            if available_rows >= settings.MIN_TRAINING_ROWS:
+                body["model_training"] = ml_service.train_models(db, ws_id)
+            else:
+                body["model_training"] = {
+                    "status": "insufficient_data",
+                    "n_samples": available_rows,
+                    "required": settings.MIN_TRAINING_ROWS,
+                }
+        except Exception:
+            import logging
+            logging.getLogger("socialboost.ml").exception(
+                "automatic training after %s sync failed for workspace %s",
+                acc.platform, ws_id,
+            )
+            body["model_training"] = {
+                "status": "failed",
+                "message": "Sync completed, but automatic model training failed. Check backend logs.",
+            }
     if acc.platform == "instagram" and live:
         body["live_metrics"] = {
             key: live.get(key)
