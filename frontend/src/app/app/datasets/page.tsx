@@ -9,6 +9,7 @@ export default function Datasets() {
   const [res, setRes] = useState<any>(null);
   const [models, setModels] = useState<any[]>([]);
   const [model, setModel] = useState<any>(null);
+  const [coachModel, setCoachModel] = useState<any>(null);
   const [imports, setImports] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [training, setTraining] = useState(false);
@@ -21,6 +22,7 @@ export default function Datasets() {
   const loadModels = () => {
     api.modelStatus().then(setModels).catch(() => {});
     api.modelDetail().then(setModel).catch(() => {});
+    api.coachStatus().then(setCoachModel).catch(() => setCoachModel({ available: false }));
     api.datasetImports().then(setImports).catch(() => {});
   };
   useEffect(() => { loadModels(); api.analyticsSummary().then(setDataSummary).catch(() => {}); }, []);
@@ -46,11 +48,15 @@ export default function Datasets() {
     setTrainMsg("");
     try {
       const r: any = await api.train();
-      if (r.status === "trained") {
-        setTrainMsg(`Trained on ${r.n_samples} posts. R² ${r.metrics?.r2?.toFixed(3) ?? "—"}, MAE ${Math.round(r.metrics?.mae ?? 0).toLocaleString()}.`);
-      } else {
-        setTrainMsg(r.message || "Training did not run.");
-      }
+      const viewMessage = r.status === "trained"
+        ? `View model trained on ${r.n_samples} posts. R² ${r.metrics?.r2?.toFixed(3) ?? "—"}, MAE ${Math.round(r.metrics?.mae ?? 0).toLocaleString()}.`
+        : r.message || "View-model training did not run.";
+      const coachMessage = r.growth_coach?.status === "trained"
+        ? ` Growth Coach trained on ${r.growth_coach.n_samples} posts.`
+        : r.growth_coach?.message
+          ? ` Growth Coach: ${r.growth_coach.message}`
+          : "";
+      setTrainMsg(viewMessage + coachMessage);
       loadModels();
     } catch (e: any) {
       setErr(e.message);
@@ -83,15 +89,20 @@ export default function Datasets() {
         .map((result: any) => result.status === "fulfilled" ? result.value?.sync_note : result.reason?.message)
         .filter(Boolean);
       const freshModel = await api.modelDetail().catch(() => ({ available: false }));
+      const freshCoach = await api.coachStatus().catch(() => ({ available: false }));
       setModel(freshModel);
+      setCoachModel(freshCoach);
       const summary = await api.analyticsSummary().catch(() => null);
       if (summary) setDataSummary(summary);
       loadModels();
       setTrainMsg(
         `Synced ${liveCount} of ${linked.length} live-linked account(s). ` +
         (freshModel.available
-          ? `Model ${freshModel.version} is ready with ${freshModel.n_samples} real-view training samples.`
-          : `A trained model is not ready yet: ${summary?.historical_posts ?? 0} historical posts are recorded; at least 10 with real view counts are required.`) +
+          ? `View model ${freshModel.version} is ready with ${freshModel.n_samples} real-view samples. `
+          : `The view model is not ready: ${summary?.historical_posts ?? 0} posts are recorded; at least 10 real-view samples are required. `) +
+        (freshCoach.available
+          ? `Growth Coach ${freshCoach.version} is ready with ${freshCoach.n_samples} samples.`
+          : `Growth Coach needs ${Math.max(0, Number(freshCoach.required ?? 10) - Number(freshCoach.n_samples_available ?? 0))} more real-view posts.`) +
         (notes.length ? ` Provider note: ${notes[0]}` : "")
       );
     } catch (e: any) {
@@ -235,6 +246,21 @@ export default function Datasets() {
             <div className="flex flex-wrap gap-2 mt-4">
               <Link href="/app/predictions" className="btn btn-ghost btn-sm">Open predictions</Link>
             </div>
+          </Panel>
+
+          <Panel title="Growth Coach · Content-aware model" aside={<span className={`tag ${coachModel?.available ? "tag-sage" : ""}`}>{coachModel?.available ? "ready" : "waiting for data"}</span>}>
+            <p className="text-[11px] leading-relaxed text-[var(--muted)]">HistGradientBoostingRegressor predicts a personal growth index with low/high quantile ranges. TF-IDF + TruncatedSVD encodes caption/title text; StandardScaler normalises numeric features. Chronological TimeSeriesSplit checks out-of-sample ranking when enough history exists.</p>
+            {coachModel?.available ? (
+              <dl className="mt-3">
+                <div className="kv"><dt>Version</dt><dd>{coachModel.version || "—"}</dd></div>
+                <div className="kv"><dt>Training posts</dt><dd>{coachModel.n_samples ?? "—"}</dd></div>
+                <div className="kv"><dt>Validation folds</dt><dd>{coachModel.cross_validation?.folds ?? 0}</dd></div>
+                <div className="kv"><dt>Rank correlation</dt><dd>{coachModel.cross_validation?.rank_correlation == null ? "—" : Number(coachModel.cross_validation.rank_correlation).toFixed(3)}</dd></div>
+              </dl>
+            ) : (
+              <p className="mono text-[9px] text-[var(--muted)] mt-3">{coachModel?.note || `At least ${coachModel?.required ?? 10} posts with real view counts are needed. Sync connected accounts to train automatically.`}</p>
+            )}
+            <button className="btn btn-ghost btn-sm mt-3" onClick={train} disabled={training || syncingAccounts}>{training ? "Training…" : "Train both models"}</button>
           </Panel>
 
           <Panel title="Model versions">
