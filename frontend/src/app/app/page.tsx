@@ -171,6 +171,11 @@ export default function Overview() {
                   ? `${Number(acc.post_count || 0).toLocaleString()} ${p === "youtube" ? "videos" : "media"} · ${Number(acc.followers || 0).toLocaleString()} ${p === "youtube" ? "subscribers" : "followers"}`
                   : `Connect ${label} to see channel stats`}
               </p>
+              {acc && (
+                <p className="mono text-[9px] tracking-[0.02em] text-[var(--muted)] mt-1 leading-relaxed">
+                  Synced history: {Number(summary?.by_platform?.[p]?.posts || 0).toLocaleString()} posts · {summary?.by_platform?.[p]?.views == null ? "views unavailable" : `${Number(summary.by_platform[p].views).toLocaleString()} views`}
+                </p>
+              )}
             </div>
             {acc ? (
               <div className="min-w-[4.25rem] text-right shrink-0">
