@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { PageHeader, Panel, StatusTag } from "@/components/app/ui";
+import { PageHeader, Panel, StatusTag, PlatformMark } from "@/components/app/ui";
 import Link from "next/link";
 
 export default function SettingsPage() {
@@ -145,10 +145,11 @@ export default function SettingsPage() {
             ) : (
               <ul className="space-y-2">
                 {accounts.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between py-2 border-b border-[var(--hairline)] last:border-b-0">
-                    <div>
-                      <p className="text-[12px]">@{a.handle}</p>
-                      <p className="mono text-[8.5px] uppercase text-[var(--muted)]">{a.platform} · {a.mode}</p>
+                  <li key={a.id} className="flex items-center gap-3 py-2 border-b border-[var(--hairline)] last:border-b-0">
+                    <PlatformMark platform={a.platform} size={30} imageUrl={a.profile_picture_url} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] truncate">{a.display_name || `@${a.handle}`}</p>
+                      <p className="mono text-[8.5px] uppercase text-[var(--muted)] truncate">@{a.handle} · {a.platform} · {a.mode}</p>
                     </div>
                     <StatusTag status={a.status} />
                   </li>
