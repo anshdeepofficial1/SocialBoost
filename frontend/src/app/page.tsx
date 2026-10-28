@@ -651,21 +651,21 @@ export default function Landing() {
       <section className="section">
         <div className="wrap">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
-            <Reveal>
+            <div className="ui-fade">
               <p className="label">05 — Choose your platform</p>
               <h2 className="display-2 mt-5">One edit.<br />Two audiences.</h2>
-            </Reveal>
-            <Reveal delay={100}>
+            </div>
+            <div className="ui-fade" style={{ animationDelay: "100ms" }}>
               <p className="lede max-w-sm md:text-right">The same asset is assessed against each platform's format, duration and metadata rules — with your own account history where it exists.</p>
-            </Reveal>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <Reveal><PlatformCard platform="instagram" /></Reveal>
-            <Reveal delay={100}><PlatformCard platform="youtube" /></Reveal>
+            <div className="ui-fade"><PlatformCard platform="instagram" /></div>
+            <div className="ui-fade" style={{ animationDelay: "100ms" }}><PlatformCard platform="youtube" /></div>
           </div>
 
-          <Reveal delay={140}>
+          <div className="ui-fade" style={{ animationDelay: "140ms" }}>
             <div className="mt-6 panel p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3">
                 <span className="tag tag-sage mt-0.5"><span className="dot" />No verdict</span>
@@ -675,7 +675,7 @@ export default function Landing() {
               </div>
               <Link href="/app/platform-comparison" className="btn btn-ghost btn-sm shrink-0">Compare a video</Link>
             </div>
-          </Reveal>
+          </div>
         </div>
       </section>
 
@@ -684,7 +684,7 @@ export default function Landing() {
         <div className="wrap">
           <div className="grid grid-cols-12 gap-6 md:gap-10 items-center">
             <div className="col-span-12 lg:col-span-5 order-2 lg:order-1">
-              <Reveal>
+              <div className="ui-fade">
                 <p className="label">06 — Time the release</p>
                 <h2 className="display-2 mt-5">A plan,<br />not a pile.</h2>
                 <p className="lede mt-6 max-w-md">
@@ -697,16 +697,16 @@ export default function Landing() {
                   <span className="tag tag-signal">Sandbox</span>
                 </div>
                 <Link href="/app/calendar" className="btn btn-signal mt-7">Open calendar</Link>
-              </Reveal>
+              </div>
             </div>
             <div className="col-span-12 lg:col-span-7 order-1 lg:order-2">
-              <Reveal delay={100}>
+              <div className="ui-fade" style={{ animationDelay: "100ms" }}>
                 <CalendarSketch />
                 <div className="mt-3 flex items-center justify-between">
                   <span className="label">Timezone-aware · conflict checks</span>
                   <span className="label">Sandbox scheduling</span>
                 </div>
-              </Reveal>
+              </div>
             </div>
           </div>
         </div>
@@ -718,21 +718,21 @@ export default function Landing() {
         <div className="wrap relative">
           <div className="grid grid-cols-12 gap-8 items-end">
             <div className="col-span-12 lg:col-span-8">
-              <Reveal>
+              <div className="ui-fade">
                 <p className="label">Start</p>
                 <h2 className="display-2 mt-6 text-white">
                   Your next post<br />deserves a<br /><span className="text-[var(--signal)]">better plan.</span>
                 </h2>
-              </Reveal>
+              </div>
             </div>
             <div className="col-span-12 lg:col-span-4">
-              <Reveal delay={120}>
+              <div className="ui-fade" style={{ animationDelay: "120ms" }}>
                 <p className="lede max-w-sm">Open the studio, upload one video, and read what is actually there before you publish.</p>
                 <div className="mt-7 flex flex-col gap-3 max-w-xs">
                   <Link href="/signup" className="btn btn-signal btn-lg btn-block">Open SocialBoost</Link>
                   <Link href="/login" className="btn btn-dark btn-lg btn-block">Sign in</Link>
                 </div>
-              </Reveal>
+              </div>
             </div>
           </div>
         </div>
