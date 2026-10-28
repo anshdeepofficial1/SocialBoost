@@ -59,7 +59,8 @@ export default function Overview() {
   const yt = accounts.find((a) => a.platform === "youtube" && !isPlaceholder(a));
   const connectedCount = [ig, yt].filter(Boolean).length;
 
-  const topPosts = [...posts].sort((a, b) => b.views - a.views).slice(0, 4);
+  const postsWithViews = posts.filter((post) => post.views != null);
+  const topPosts = [...postsWithViews].sort((a, b) => Number(b.views) - Number(a.views)).slice(0, 4);
 
   return (
     <>
@@ -170,7 +171,7 @@ export default function Overview() {
             {[
               { done: connectedCount >= 2, label: "Connect both accounts", href: "/app/integrations" },
               { done: (summary?.videos ?? 0) > 0, label: "Analyze your first video", href: "/app/analyze" },
-              { done: (summary?.historical_posts ?? 0) >= 10, label: "Import 10+ historical posts", href: "/app/datasets" },
+              { done: postsWithViews.length >= 10, label: "Build 10+ post training set", href: "/app/datasets" },
               { done: upcoming.length > 0, label: "Schedule one release", href: "/app/calendar" },
             ].map((s, i) => (
               <li key={s.label} className="flex items-center gap-3 py-2.5 border-b border-[var(--hairline)] last:border-b-0">
@@ -226,7 +227,7 @@ export default function Overview() {
         <Panel title="Top posts" className="lg:col-span-2" flush>
           {topPosts.length === 0 ? (
             <div className="p-5">
-              <Empty title="No history yet" body="Import a CSV of past posts to unlock model training and platform evidence." action={<Link href="/app/datasets" className="btn btn-ghost btn-sm">Import CSV</Link>} />
+              <Empty title="No synced post history yet" body="Sync your connected Instagram and YouTube accounts first. SocialBoost will fetch posts and available public metrics; CSV import is optional for older history." action={<Link href="/app/datasets" className="btn btn-ghost btn-sm">Sync account data</Link>} />
             </div>
           ) : (
             <table className="w-full text-[12px]">
