@@ -548,7 +548,7 @@ def run_analysis(job_id: str) -> None:
             "duration_seconds": video.duration_seconds,
             "caption": (speech.get("transcript") or "")[:12000],
             "title": hook.get("opening_text") or "",
-            "hashtags": " ".join(re.findall(r"#[\\w]+", (speech.get("transcript") or "") + " " + " ".join(ocr_text))),
+            "hashtags": " ".join(re.findall(r"#[\w]+", (speech.get("transcript") or "") + " " + " ".join(ocr_text))),
         }
         predictions = {}
         for platform in ("instagram", "youtube"):
