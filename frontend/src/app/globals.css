@@ -315,37 +315,26 @@ select.field { appearance: none; background-image: linear-gradient(45deg, transp
   will-change: transform;
 }
 
-/* Content is always visible without JS (no data-hidden attribute ever gets
-   written, so nothing is hidden). With JS:
-
-   - modern browsers get native scroll-driven reveals: the animation follows
-     scroll position itself (maskUp: rise + fade + de-blur) and hydration
-     cannot cause a flash because no class toggling is involved;
-   - older browsers fall back to the IntersectionObserver in Reveal.tsx,
-     which only hides content strictly below the first viewport. */
+/* Reveal.tsx uses the same one-time IntersectionObserver strategy in every
+   browser. Content starts visible for SSR and for items in the first viewport;
+   only items below the fold are hidden, then they reveal once and stay visible.
+   Avoiding native view timelines here prevents content from fading back out or
+   jumping as users scroll up and down. */
 .reveal { opacity: 1; transform: none; transition: transform .9s var(--ease-out), opacity .6s var(--ease-out); }
 .reveal[data-hidden="true"] { opacity: 0; transform: translateY(30px); }
 .reveal[data-hidden="false"] { opacity: 1; transform: none; }
 
-@supports (animation-timeline: view()) {
-  .reveal {
-    animation: maskUp linear both;
-    animation-timeline: view();
-    animation-range: entry 8% cover 42%;
-  }
-  /* the signal line draws itself as it scrolls into view */
-  .anim-draw {
-    animation: draw linear both;
-    animation-timeline: view();
-    animation-range: entry 0% cover 45%;
-  }
-  /* list/rows pop one after another as scrolling brings them in */
-  .sd-stagger > * {
-    animation: fadeUp linear both;
-    animation-timeline: view();
-    animation-range: entry 0% cover 55%;
-  }
-}
+/* Predictable, one-shot decorative motion. Staggered items should not
+   reverse or change opacity when the user scrolls back up the page. */
+.sd-stagger > * { animation: fadeUp .55s var(--ease-out) both; }
+.sd-stagger > *:nth-child(1) { animation-delay: 40ms; }
+.sd-stagger > *:nth-child(2) { animation-delay: 90ms; }
+.sd-stagger > *:nth-child(3) { animation-delay: 140ms; }
+.sd-stagger > *:nth-child(4) { animation-delay: 190ms; }
+.sd-stagger > *:nth-child(5) { animation-delay: 240ms; }
+.sd-stagger > *:nth-child(6) { animation-delay: 290ms; }
+.sd-stagger > *:nth-child(7) { animation-delay: 340ms; }
+.sd-stagger > *:nth-child(8) { animation-delay: 390ms; }
 
 .marquee-track { display: flex; width: max-content; animation: marquee 34s linear infinite; }
 .marquee-track:hover { animation-play-state: paused; }
