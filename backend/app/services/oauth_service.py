@@ -750,6 +750,14 @@ def fetch_live_stats(platform: str, tokens: dict) -> dict | None:
             "view_metrics_available": available_view_metrics,
             "data_source": "Instagram Graph API",
         }
-    except Exception:
-        log.info("live stats fetch failed for %s", platform, exc_info=True)
+    except Exception as exc:
+        # Keep a safe diagnostic category for the sync endpoint/UI. Never expose
+        # provider response bodies, URLs, or credentials to the browser.
+        tokens["_sync_error_type"] = type(exc).__name__
+        log.warning(
+            "live stats fetch failed for %s (error_type=%s)",
+            platform,
+            type(exc).__name__,
+            exc_info=True,
+        )
         return None
