@@ -342,10 +342,30 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
             "authorization has expired, then check Render logs for the YouTube Data API error."
         )
     if acc.platform == "instagram" and not live:
-        body["sync_note"] = (
-            "Instagram live metrics were unavailable. Reconnect Instagram and approve the requested "
-            "instagram_manage_insights, instagram_basic, pages_show_list, and pages_read_engagement permissions."
-        )
+        error_type = (tokens or {}).get("_sync_error_type")
+        body["sync_error_type"] = error_type
+        if acc.status == "needs_reauth":
+            body["sync_note"] = (
+                "SocialBoost could not decrypt or find the saved Instagram authorization. "
+                "Reconnect Instagram once; your saved account and historical records will be kept."
+            )
+        elif error_type == "HTTPStatusError":
+            body["sync_note"] = (
+                "Meta rejected the Instagram stats request (HTTP error). The account stays connected "
+                "and its last known counters are preserved. Check the Render logs for the Graph API "
+                "error code/message before reconnecting; do not disconnect the account yet."
+            )
+        elif error_type:
+            body["sync_note"] = (
+                f"Instagram stats sync failed ({error_type}). The last known counters are preserved. "
+                "Check the Render logs for the matching 'live stats fetch failed for instagram' entry "
+                "to see the exact provider error before changing permissions or reconnecting."
+            )
+        else:
+            body["sync_note"] = (
+                "Instagram live metrics could not be refreshed. The last known counters are preserved. "
+                "Check the Render logs for the exact sync failure before reconnecting or changing permissions."
+            )
     return body
 
 
