@@ -62,10 +62,17 @@ export default function Overview() {
               <p className="text-[13px] font-medium truncate">
                 {acc ? `@${acc.handle}` : `Connect ${label}`}
               </p>
-              <p className="mono text-[9px] tracking-[0.1em] uppercase text-[var(--muted)] mt-0.5">
+              <p className="text-[10px] font-medium text-[var(--muted)] mt-1 leading-tight truncate">
                 {acc
-                  ? `${acc.mode} · ${acc.post_count} posts · ${acc.followers.toLocaleString()} followers`
+                  ? acc.mode === "oauth"
+                    ? `Connected via ${p === "youtube" ? "Google" : "Meta"}`
+                    : "Manual profile"
                   : "No account linked yet"}
+              </p>
+              <p className="mono text-[9px] tracking-[0.035em] text-[var(--muted)] mt-1 leading-relaxed">
+                {acc
+                  ? `${Number(acc.post_count || 0).toLocaleString()} ${p === "youtube" ? "videos" : "media"} · ${Number(acc.followers || 0).toLocaleString()} ${p === "youtube" ? "subscribers" : "followers"}`
+                  : `Connect ${label} to see channel stats`}
               </p>
             </div>
             {acc ? (
