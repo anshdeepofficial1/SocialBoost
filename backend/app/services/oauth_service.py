@@ -302,6 +302,10 @@ class InstagramPagePermissionMissing(RuntimeError):
     """Raised when the token does not have the required Page-list permission."""
 
 
+class InstagramBusinessManagementPermissionMissing(RuntimeError):
+    """Raised when an empty Page list coincides with a missing business_management grant."""
+
+
 class InstagramPagesNotFound(RuntimeError):
     """Raised when Meta returns no manageable Facebook Pages for the user token."""
 
@@ -371,15 +375,29 @@ def fetch_identity(platform: str, access_token: str) -> dict:
                 "Instagram OAuth token lacks granted pages_show_list permission; returned statuses: %s",
                 {
                     name: permission_status.get(name, "not returned")
-                    for name in ("pages_show_list", "pages_read_engagement", "instagram_basic")
+                    for name in (
+                        "pages_show_list",
+                        "pages_read_engagement",
+                        "instagram_basic",
+                        "business_management",
+                    )
                 },
             )
             raise InstagramPagePermissionMissing(
                 "The Facebook user token does not have a granted pages_show_list permission."
             )
+        if permission_status.get("business_management") != "granted":
+            log.warning(
+                "Instagram OAuth token has pages_show_list but lacks business_management; "
+                "Meta may be hiding Pages assigned through a Business Portfolio"
+            )
+            raise InstagramBusinessManagementPermissionMissing(
+                "The Facebook user token does not have a granted business_management permission, "
+                "which may be required to discover this Page through its Business Portfolio."
+            )
         log.warning(
-            "Instagram OAuth token has pages_show_list granted but Meta returned zero Pages; "
-            "check Facebook profile Page access and Business Portfolio assignment"
+            "Instagram OAuth token has both pages_show_list and business_management granted "
+            "but Meta returned zero Pages; check Page access and Business Portfolio assignment"
         )
         raise InstagramPagesNotFound(
             "Meta returned zero manageable Facebook Pages even though pages_show_list is granted. "
