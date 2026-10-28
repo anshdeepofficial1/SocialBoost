@@ -493,12 +493,20 @@ def oauth_callback(
             tokens["instagram_handle"] = handle
             tokens["instagram_display_name"] = display_name
             tokens["instagram_profile_picture_url"] = identity.get("profile_picture_url") or ""
+    except oauth_service.InstagramPagePermissionMissing:
+        import logging
+
+        logging.getLogger("socialboost.oauth").warning(
+            "Meta token is missing pages_show_list for Instagram OAuth workspace %s",
+            binding["workspace_id"],
+        )
+        return _frontend_redirect("error", platform, "instagram_pages_permission_missing")
     except oauth_service.InstagramPagesNotFound:
         import logging
 
         logging.getLogger("socialboost.oauth").warning(
-            "Meta returned no manageable Facebook Pages for Instagram OAuth workspace %s; "
-            "check pages_show_list permission and Facebook Page access",
+            "Meta returned no manageable Facebook Pages for Instagram OAuth workspace %s "
+            "despite a granted pages_show_list permission; check Page access and Business Portfolio assignment",
             binding["workspace_id"],
         )
         return _frontend_redirect("error", platform, "instagram_pages_not_found")
