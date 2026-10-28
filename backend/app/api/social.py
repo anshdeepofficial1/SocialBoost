@@ -298,7 +298,17 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
         if "post_count" in live:
             acc.post_count = int(live.get("post_count") or 0)
         if "avg_views" in live:
-            acc.avg_views = int(live.get("avg_views") or 0) if live.get("view_metrics_available", 1) else None
+            if acc.platform == "instagram":
+                acc.avg_views = (
+                    int(live.get("avg_views") or 0)
+                    if live.get("view_metrics_available", 1)
+                    else None
+                )
+            elif live.get("avg_views") is not None:
+                acc.avg_views = int(live["avg_views"])
+            elif not acc.avg_views:
+                # A zero default is not evidence of zero average views.
+                acc.avg_views = None
         if "engagement_rate" in live:
             acc.engagement_rate = float(live.get("engagement_rate") or 0)
         acc.status = "connected"
@@ -321,6 +331,16 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
             key: live.get(key)
             for key in ("total_views", "total_likes", "total_comments", "total_reach", "view_metrics_available", "data_source")
         }
+    if acc.platform == "youtube" and live:
+        body["live_metrics"] = {
+            key: live.get(key)
+            for key in ("total_views", "avg_views", "avg_views_sample_size")
+        }
+    if acc.platform == "youtube" and not live:
+        body["sync_note"] = (
+            "YouTube channel statistics could not be refreshed. Reconnect the Google account if its "
+            "authorization has expired, then check Render logs for the YouTube Data API error."
+        )
     if acc.platform == "instagram" and not live:
         body["sync_note"] = (
             "Instagram live metrics were unavailable. Reconnect Instagram and approve the requested "
@@ -364,6 +384,7 @@ def _upsert_oauth_account(
     external_id: str = "",
     followers: int = 0,
     post_count: int = 0,
+    avg_views: int | None = None,
 ) -> SocialAccount:
     existing = (
         db.query(SocialAccount)
@@ -380,6 +401,10 @@ def _upsert_oauth_account(
         existing.scopes = PLATFORMS[platform]["scope"]
         existing.followers = int(followers or 0)
         existing.post_count = int(post_count or 0)
+        if avg_views is not None:
+            existing.avg_views = int(avg_views)
+        elif not existing.avg_views:
+            existing.avg_views = None
         existing.last_synced_at = datetime.utcnow()
         acc = existing
     else:
@@ -395,9 +420,15 @@ def _upsert_oauth_account(
             credential_ref=credential_id,
             followers=int(followers or 0),
             post_count=int(post_count or 0),
+            avg_views=avg_views,
             last_synced_at=datetime.utcnow(),
         )
         db.add(acc)
+        # Force a SQL NULL for an unknown average instead of allowing a Python
+        # ORM default to make the UI display a misleading zero.
+        db.flush()
+        if avg_views is None:
+            acc.avg_views = None
     db.commit()
     db.refresh(acc)
     return acc
@@ -490,6 +521,7 @@ def oauth_callback(
     external_id = ""
     followers = 0
     post_count = 0
+    avg_views: int | None = None
     identity = {}
     try:
         identity = oauth_service.fetch_identity(platform, tokens["access_token"])
@@ -498,6 +530,8 @@ def oauth_callback(
         external_id = identity.get("external_id") or ""
         followers = int(identity.get("followers", 0) or 0)
         post_count = int(identity.get("post_count", 0) or 0)
+        raw_avg_views = identity.get("avg_views")
+        avg_views = int(raw_avg_views) if raw_avg_views is not None else None
         if platform == "instagram":
             # Keep the linked Instagram User ID and Page token encrypted with
             # the OAuth token payload. A Page's own counters are never used as IG metrics.
@@ -583,6 +617,7 @@ def oauth_callback(
         external_id=external_id,
         followers=followers,
         post_count=post_count,
+        avg_views=avg_views,
     )
 
     return _frontend_redirect("connected", platform, "")
