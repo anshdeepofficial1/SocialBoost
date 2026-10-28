@@ -74,3 +74,32 @@ export const api = {
   youtubeDashboard: (channel: string, limit = 10) => req(`/youtube/dashboard?channel=${encodeURIComponent(channel)}&limit=${limit}`),
   youtubeCompetitors: (limit = 6) => req(`/youtube/competitors?limit=${limit}`),
 };
+
+type LinkedAccount = {
+  id: string;
+  platform: string;
+  mode: string;
+  status: string;
+  last_synced_at?: string | null;
+};
+
+/**
+ * Refresh live-linked accounts when they have no stored post history or their
+ * most recent sync is stale. Manual/sandbox profiles are never treated as live
+ * provider data.
+ */
+export async function syncConnectedAccountsIfNeeded(
+  accounts: LinkedAccount[],
+  storedPostCounts: Record<string, number>,
+  staleAfterMs = 15 * 60 * 1000,
+) {
+  const now = Date.now();
+  const due = accounts.filter((account) => {
+    if (account.mode !== "oauth" || account.status !== "connected") return false;
+    const lastSynced = account.last_synced_at ? new Date(account.last_synced_at).getTime() : 0;
+    const missingHistory = Number(storedPostCounts[account.platform] || 0) === 0;
+    const stale = !Number.isFinite(lastSynced) || now - lastSynced > staleAfterMs;
+    return missingHistory || stale;
+  });
+  return Promise.allSettled(due.map((account) => api.syncSocial(account.id)));
+}
