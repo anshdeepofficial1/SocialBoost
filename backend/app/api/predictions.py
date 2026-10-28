@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from ..db.session import get_db
 from .deps import get_current_user, get_workspace_id
 from ..models.video import Video
+from ..models.calendar import HistoricalPost
 from ..models.prediction import Prediction
 from ..services.ml_service import predict, train_models, model_status
 
@@ -97,7 +98,28 @@ def status(user=Depends(get_current_user), db: Session = Depends(get_db)):
 @router.get("/model")
 def model(user=Depends(get_current_user), db: Session = Depends(get_db)):
     ws_id = get_workspace_id(user, db)
-    return model_status(ws_id)
+    status = model_status(ws_id)
+    if status.get("available"):
+        return status
+
+    # Render's ephemeral filesystem can discard sklearn artifacts between
+    # restarts while the durable database still has the synced training rows.
+    # Rebuild from this workspace's actual posts rather than showing a stale
+    # "no model" state or fabricating a prediction.
+    usable_rows = (
+        db.query(HistoricalPost)
+        .filter(
+            HistoricalPost.workspace_id == ws_id,
+            HistoricalPost.views.isnot(None),
+        )
+        .count()
+    )
+    from ..core.config import settings
+    if usable_rows >= settings.MIN_TRAINING_ROWS:
+        trained = train_models(db, ws_id)
+        if trained.get("status") == "trained":
+            return model_status(ws_id)
+    return status
 
 
 @router.get("")
