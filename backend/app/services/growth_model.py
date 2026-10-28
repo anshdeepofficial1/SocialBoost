@@ -444,7 +444,10 @@ def train(db: Session, workspace_id: str | None = None) -> dict:
     except Exception:
         importance_rows = []
 
-    version = datetime.utcnow().strftime("coach-%Y%m%d%H%M%S")
+    # Bump the model artifact generation whenever feature/target semantics change.
+    # The status and sync endpoints use this prefix to rebuild pre-null-aware
+    # artifacts after deployment instead of silently serving the old model.
+    version = datetime.utcnow().strftime("coach-v2-%Y%m%d%H%M%S")
     path = artifact_path(workspace_id)
     artifact = {
         "model": median_model,
