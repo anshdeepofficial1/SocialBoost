@@ -1,5 +1,6 @@
 import os
 import re
+from collections import Counter
 from urllib.parse import urlparse
 
 import httpx
@@ -7,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ..db.session import get_db
+from ..models.calendar import HistoricalPost
 from ..services import oauth_service
 from .deps import get_current_user, get_workspace_id
 
@@ -307,3 +309,153 @@ def dashboard(
         "videos": videos,
         "source": "YouTube Data API v3",
     }
+
+@router.get("/competitors")
+def competitors(
+    limit: int = Query(6, ge=1, le=10),
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Suggest public competitor channels based on the connected channel's niche.
+
+    The connected channel and its recent upload titles seed a small topic query.
+    Public statistics are fetched from YouTube, and the user's own channel is
+    excluded. Suggestions are candidates to study, not claims that a channel's
+    success is caused by any one factor.
+    """
+    workspace_id = get_workspace_id(user, db)
+    tokens = oauth_service.load_fresh_youtube_tokens(db, workspace_id) or {}
+    access_token = tokens.get("access_token", "")
+    if not access_token:
+        raise HTTPException(
+            status_code=400,
+            detail="Connect YouTube in Accounts first so SocialBoost can learn the channel niche and recommend comparable channels.",
+        )
+
+    own_payload = _api_get(
+        "channels",
+        {"part": "snippet,statistics,contentDetails", "mine": "true"},
+        token=access_token,
+        prefer_api_key=False,
+    )
+    own_items = own_payload.get("items") or []
+    if not own_items:
+        raise HTTPException(status_code=404, detail="The connected Google account has no accessible YouTube channel.")
+    own = own_items[0]
+    own_id = own.get("id", "")
+    own_snippet = own.get("snippet") or {}
+    own_title = own_snippet.get("title") or "YouTube channel"
+    uploads_id = (
+        (own.get("contentDetails") or {}).get("relatedPlaylists") or {}
+    ).get("uploads", "")
+
+    recent_uploads = oauth_service._youtube_recent_videos(access_token, uploads_id, max_results=12)
+    known_titles = []
+    for upload in recent_uploads:
+        title = str(upload.get("title") or "").strip()
+        if title:
+            known_titles.append(title)
+    if not known_titles:
+        known_titles = [own_title]
+
+    stop_words = {
+        "the", "and", "for", "with", "from", "this", "that", "your", "you", "are", "was",
+        "how", "why", "what", "when", "where", "short", "shorts", "video", "official",
+        "new", "latest", "full", "part", "episode", "status", "reels", "youtube", "instagram",
+        "for", "song", "music", "hd", "4k",
+    }
+    terms = Counter(
+        token.lower()
+        for text_value in [own_title, *known_titles]
+        for token in re.findall(r"[^\W_]{3,}", text_value, flags=re.UNICODE)
+        if token.lower() not in stop_words and not token.isdigit()
+    )
+    topics = [word for word, _ in terms.most_common(3)]
+    query = " ".join(topics) or own_title
+    if not query.strip():
+        query = own_title
+
+    search_payload = _api_get(
+        "search",
+        {"part": "snippet", "type": "channel", "maxResults": min(25, max(12, limit * 3)), "q": query},
+        token=access_token,
+        prefer_api_key=True,
+    )
+    candidate_ids = []
+    initial = {}
+    for item in search_payload.get("items") or []:
+        identifier = ((item.get("id") or {}).get("channelId") or "").strip()
+        if not identifier or identifier == own_id:
+            continue
+        candidate_ids.append(identifier)
+        initial[identifier] = item.get("snippet") or {}
+    candidate_ids = list(dict.fromkeys(candidate_ids))[: max(limit * 2, limit)]
+    if not candidate_ids:
+        return {"source": "YouTube Data API v3", "query": query, "topics": topics, "competitors": []}
+
+    channels_payload = _api_get(
+        "channels",
+        {"part": "snippet,statistics,contentDetails", "id": ",".join(candidate_ids[:50])},
+        token=access_token,
+        prefer_api_key=True,
+    )
+    candidates = []
+    for channel in channels_payload.get("items") or []:
+        channel_id = channel.get("id", "")
+        if not channel_id or channel_id == own_id:
+            continue
+        snippet = channel.get("snippet") or initial.get(channel_id) or {}
+        stats = channel.get("statistics") or {}
+        content = channel.get("contentDetails") or {}
+        channel_uploads = (content.get("relatedPlaylists") or {}).get("uploads", "")
+        public_videos = oauth_service._youtube_recent_videos(access_token, channel_uploads, max_results=3)
+        snippet_text = f"{snippet.get('title', '')} {snippet.get('description', '')}".lower()
+        matched_topics = [topic for topic in topics if topic.lower() in snippet_text]
+        candidates.append({
+            "id": channel_id,
+            "title": snippet.get("title") or "YouTube channel",
+            "handle": snippet.get("customUrl") or "",
+            "description": snippet.get("description") or "",
+            "thumbnail": (
+                (snippet.get("thumbnails") or {}).get("high")
+                or (snippet.get("thumbnails") or {}).get("medium")
+                or (snippet.get("thumbnails") or {}).get("default")
+                or {}
+            ).get("url"),
+            "subscribers": _integer(
+                stats.get("subscriberCount"),
+                hidden=bool(stats.get("hiddenSubscriberCount")),
+            ),
+            "total_views": _integer(stats.get("viewCount")) or 0,
+            "video_count": _integer(stats.get("videoCount")) or 0,
+            "url": f"https://www.youtube.com/channel/{channel_id}",
+            "matched_topics": matched_topics or topics[:2],
+            "recent_videos": [
+                {
+                    "id": video.get("post_id"),
+                    "title": video.get("title") or "Untitled video",
+                    "published_at": video.get("published_at"),
+                    "views": video.get("views"),
+                    "url": video.get("permalink"),
+                }
+                for video in public_videos
+            ],
+        })
+
+    candidates.sort(
+        key=lambda item: (
+            len(item["matched_topics"]),
+            item["subscribers"] or 0,
+            item["total_views"] or 0,
+        ),
+        reverse=True,
+    )
+    return {
+        "source": "YouTube Data API v3",
+        "channel": {"id": own_id, "title": own_title},
+        "query": query,
+        "topics": topics,
+        "competitors": candidates[:limit],
+        "note": "Channels are matched from recent upload topics and public stats. Compare their formats and upload patterns; correlation does not prove a cause of growth.",
+    }
+
