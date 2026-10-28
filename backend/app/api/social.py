@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -334,14 +334,33 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
                 )
                 .count()
             )
-            if available_rows >= settings.MIN_TRAINING_ROWS:
-                body["model_training"] = ml_service.train_models(db, ws_id)
-            else:
+            if available_rows < settings.MIN_TRAINING_ROWS:
                 body["model_training"] = {
                     "status": "insufficient_data",
                     "n_samples": available_rows,
                     "required": settings.MIN_TRAINING_ROWS,
                 }
+            else:
+                active_model = ml_service.model_status(ws_id)
+                try:
+                    trained_at = datetime.fromisoformat(active_model.get("trained_at") or "")
+                except (TypeError, ValueError):
+                    trained_at = None
+                stale_model = (
+                    not active_model.get("available")
+                    or trained_at is None
+                    or datetime.utcnow() - trained_at.replace(tzinfo=None) > timedelta(hours=24)
+                    or int(active_model.get("n_samples") or 0) != available_rows
+                )
+                body["model_training"] = (
+                    ml_service.train_models(db, ws_id)
+                    if stale_model
+                    else {
+                        "status": "already_current",
+                        "n_samples": available_rows,
+                        "version": active_model.get("version"),
+                    }
+                )
         except Exception:
             import logging
             logging.getLogger("socialboost.ml").exception(
