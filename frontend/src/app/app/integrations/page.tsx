@@ -202,7 +202,7 @@ export default function Integrations() {
             <section key={provider.platform} className="panel panel-hover overflow-hidden">
               <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-[var(--hairline)] bg-[linear-gradient(120deg,var(--paper),var(--paper-2))]">
                 <div className="flex items-center gap-3 min-w-0">
-                  <PlatformMark platform={provider.platform} size={40} />
+                  <PlatformMark platform={provider.platform} size={40} imageUrl={account?.profile_picture_url} />
                   <div className="min-w-0">
                     <h2 className="font-display font-bold text-[17px] tracking-[-0.025em]">{provider.label}</h2>
                     <p className="text-[11px] text-[var(--muted)] mt-0.5">{instagram ? "Instagram professional account" : "YouTube channel"}</p>
