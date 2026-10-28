@@ -23,7 +23,12 @@ export default function SettingsPage() {
     "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
     "America/Toronto", "America/Vancouver", "Australia/Sydney", "Australia/Perth",
     prefs.timezone || "UTC",
-  ])).sort((a, b) => a === "Asia/Kolkata" ? -1 : b === "Asia/Kolkata" ? 1 : a.localeCompare(b));
+  ])).sort((a, b) => {
+    if (a === b) return 0;
+    if (a === "Asia/Kolkata") return -1;
+    if (b === "Asia/Kolkata") return 1;
+    return a.localeCompare(b);
+  });
 
   useEffect(() => {
     api.getPrefs().then(setPrefs).catch(() => {});
