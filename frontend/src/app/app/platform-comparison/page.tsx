@@ -19,7 +19,7 @@ export default function PlatformComparison() {
       const [a, b, c, d] = await Promise.all([
         api.caption(caption, "instagram"),
         api.caption(caption, "youtube"),
-        api.predict({ platform: "instagram", caption, title, hashtags: "", duration_seconds: duration }),
+        api.predict({ platform: "instagram", caption, title: "", hashtags: "", duration_seconds: duration }),
         api.predict({ platform: "youtube", caption, title, hashtags: "", duration_seconds: duration }),
       ]);
       setIg({ caption: a, pred: c });
@@ -93,18 +93,18 @@ export default function PlatformComparison() {
       <PageHeader
         eyebrow="Platforms · 04"
         title={<>One edit. Two audiences.</>}
-        description="The same asset is scored against each platform's caption rules and format expectations. With limited history, no winner is declared."
+        description="Both platforms are evaluated in one run. Instagram Reels uses a caption; YouTube Shorts has a separate title plus a description, so the title is applied only to YouTube."
       />
 
       <Panel title="Shared asset" className="mb-4">
         <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr] gap-3">
           <div>
-            <label className="field-label" htmlFor="caption">Caption</label>
-            <textarea id="caption" className="field h-[88px] resize-y" placeholder="Write one caption to compare…" value={caption} onChange={(e) => setCaption(e.target.value)} />
+            <label className="field-label" htmlFor="caption">Caption / description (shared text)</label>
+            <textarea id="caption" className="field h-[88px] resize-y" placeholder="Instagram caption and YouTube description…" value={caption} onChange={(e) => setCaption(e.target.value)} />
           </div>
           <div>
-            <label className="field-label" htmlFor="title">Title</label>
-            <input id="title" className="field" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <label className="field-label" htmlFor="title">YouTube Shorts title only</label>
+            <input id="title" className="field" placeholder="Title used only for YouTube" value={title} onChange={(e) => setTitle(e.target.value)} />
             <label className="field-label mt-3" htmlFor="dur">Duration (s)</label>
             <input id="dur" type="number" min={0} max={3600} className="field" value={duration} onChange={(e) => setDuration(Number(e.target.value))} />
           </div>
