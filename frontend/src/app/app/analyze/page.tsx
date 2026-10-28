@@ -85,7 +85,7 @@ export default function Analyze() {
             before you publish.
           </>
         }
-        description="Upload a Reel or Short. Features are extracted from the file itself; anything the pipeline cannot measure is shown as a gap."
+        description="Upload a Reel or Short. SocialBoost measures the video, transcribes audio locally when possible, reads opening-frame text and compares the result with both platform models. Missing metrics are reported honestly."
         actions={<Link href="/app/library" className="btn btn-ghost">Open library</Link>}
       />
 
@@ -108,7 +108,7 @@ export default function Analyze() {
                   <span className="w-0 h-0 border-y-[5px] border-y-transparent border-l-[8px] border-l-[var(--ink)]" />
                 </div>
                 <p className="mt-4 text-[13.5px] font-medium">Drop a video, or click to browse</p>
-                <p className="mono text-[9px] uppercase tracking-[0.12em] text-[var(--muted)] mt-2">Nothing leaves this machine</p>
+                <p className="mono text-[9px] uppercase tracking-[0.12em] text-[var(--muted)] mt-2">Uploaded to your SocialBoost server for local analysis</p>
               </div>
             )}
             <input ref={inputRef} type="file" accept="video/*" className="hidden" onChange={(e) => pick(e.target.files?.[0] || null)} />
@@ -177,8 +177,8 @@ export default function Analyze() {
                 ["Frame rate & aspect", "Measured"],
                 ["Brightness / contrast", "Measured"],
                 ["Scene-change rhythm", "Measured"],
-                ["Speech recognition", "Unavailable"],
-                ["On-screen text", "Only if Tesseract is installed"],
+                ["Speech recognition", "Local Whisper · CPU"],
+                ["On-screen text", "RapidOCR · opening timestamps"],
               ].map(([k, v]) => (
                 <div key={k} className="kv">
                   <dt className="text-[11.5px]">{k}</dt>
@@ -187,7 +187,7 @@ export default function Analyze() {
               ))}
             </dl>
             <p className="mt-4 mono text-[9px] leading-relaxed text-[var(--muted)]">
-              A missing capability is reported, never filled with a fabricated value.
+              Speech recognition uses faster-whisper on CPU (default model: tiny; first 180 seconds by default). RapidOCR reads sampled frames from the first 3 seconds. First use may download the model; provider/server memory limits can still prevent a model from starting. Missing results are labelled unavailable.
             </p>
           </Panel>
         </div>
