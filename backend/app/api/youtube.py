@@ -281,7 +281,7 @@ def dashboard(
                     "description": video_snippet.get("description") or "",
                     "thumbnail": video_thumb.get("url"),
                     "published_at": video_snippet.get("publishedAt"),
-                    "views": _integer(video_stats.get("viewCount"),),
+                    "views": _integer(video_stats.get("viewCount")),
                     "likes": _integer(video_stats.get("likeCount")),
                     "comments": _integer(video_stats.get("commentCount")),
                     "duration": video_content.get("duration") or "",
