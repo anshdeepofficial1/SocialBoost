@@ -224,6 +224,14 @@ def store_tokens(db: Session, workspace_id: str, platform: str, tokens: dict) ->
         .filter(OAuthCredential.workspace_id == workspace_id, OAuthCredential.platform == platform)
         .first()
     )
+    # Google may omit refresh_token on a subsequent authorization even when an
+    # existing grant already has one. Preserve the usable long-lived token so
+    # a reconnect does not accidentally downgrade the credential to one-hour
+    # access-token-only mode.
+    if row and platform == "youtube" and not tokens.get("refresh_token"):
+        previous = _decrypt(row.payload)
+        if previous and previous.get("refresh_token"):
+            tokens = {**tokens, "refresh_token": previous["refresh_token"]}
     blob = _encrypt(tokens)
     expires = _parse_iso(tokens.get("expires_at"))
     if row:
@@ -314,6 +322,10 @@ class InstagramAccountNotFound(RuntimeError):
     """Raised when Pages are visible but none exposes a linked professional Instagram account."""
 
 
+class YouTubeChannelNotFound(RuntimeError):
+    """Raised when Google login succeeds but the selected account has no accessible YouTube channel."""
+
+
 def fetch_identity(platform: str, access_token: str) -> dict:
     """Resolve the actual linked Instagram professional account or YouTube channel."""
     if platform == "youtube":
@@ -326,7 +338,9 @@ def fetch_identity(platform: str, access_token: str) -> dict:
         r.raise_for_status()
         items = r.json().get("items") or []
         if not items:
-            raise RuntimeError("No YouTube channel on this Google account.")
+            raise YouTubeChannelNotFound(
+                "Google authorization succeeded, but no YouTube channel was returned for this account."
+            )
         it = items[0]
         snippet = it.get("snippet", {})
         stats = it.get("statistics", {})
