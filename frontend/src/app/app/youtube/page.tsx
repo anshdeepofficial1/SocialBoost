@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowUpRight,
@@ -43,6 +43,28 @@ type Dashboard = {
   };
   videos: VideoItem[];
   source: string;
+};
+
+type CompetitorVideo = {
+  id: string;
+  title: string;
+  published_at: string | null;
+  views: number | null;
+  url: string | null;
+};
+
+type Competitor = {
+  id: string;
+  title: string;
+  handle: string;
+  description: string;
+  thumbnail: string | null;
+  subscribers: number | null;
+  total_views: number;
+  video_count: number;
+  url: string;
+  matched_topics: string[];
+  recent_videos: CompetitorVideo[];
 };
 
 function compact(value: number | null | undefined): string {
@@ -137,7 +159,57 @@ export default function YouTubeStudio() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const [competitorQuery, setCompetitorQuery] = useState("");
+  const [competitorBusy, setCompetitorBusy] = useState(false);
+  const [competitorError, setCompetitorError] = useState("");
   const { container, item } = useStagger();
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadConnectedChannel = async () => {
+      const accounts = await api.socialAccounts().catch(() => []);
+      if (cancelled) return;
+      const connected = accounts.find((account: any) =>
+        account.platform === "youtube" &&
+        account.mode === "oauth" &&
+        account.status === "connected" &&
+        !/^(instagram|youtube)-user-/i.test(account.handle || "")
+      );
+      if (!connected) {
+        setError("No live YouTube channel is linked yet. Connect the Google account in Accounts; you can still search a public channel manually.");
+        return;
+      }
+
+      const channelLookup = connected.handle || connected.external_id;
+      setLookup(channelLookup || "");
+      if (!channelLookup) return;
+      setBusy(true);
+      setCompetitorBusy(true);
+      const [dashboardResult, competitorResult] = await Promise.allSettled([
+        api.youtubeDashboard(channelLookup, 10) as Promise<Dashboard>,
+        api.youtubeCompetitors(6) as Promise<{ competitors?: Competitor[]; query?: string }>,
+      ]);
+      if (cancelled) return;
+      if (dashboardResult.status === "fulfilled") {
+        setData(dashboardResult.value);
+        setError("");
+      } else {
+        setError(dashboardResult.reason?.message || "Could not load the connected YouTube channel.");
+      }
+      if (competitorResult.status === "fulfilled") {
+        setCompetitors(competitorResult.value.competitors || []);
+        setCompetitorQuery(competitorResult.value.query || "");
+        setCompetitorError("");
+      } else {
+        setCompetitorError(competitorResult.reason?.message || "Competitor suggestions could not be loaded.");
+      }
+      setBusy(false);
+      setCompetitorBusy(false);
+    };
+    void loadConnectedChannel();
+    return () => { cancelled = true; };
+  }, []);
 
   const runLookup = async () => {
     const value = lookup.trim();
@@ -194,7 +266,7 @@ export default function YouTubeStudio() {
           </button>
         </form>
         <p className="mono text-[9px] uppercase tracking-[0.08em] text-[var(--muted)] mt-3 px-1">
-          Public channel data only · API key stays on the server · No publishing actions
+          {data ? "Connected channel loaded automatically · you can still search any public channel" : "Public channel data only · server-side API access · no publishing actions"}
         </p>
       </section>
 
@@ -375,6 +447,81 @@ export default function YouTubeStudio() {
             <motion.p variants={item} className="mono text-[9px] leading-relaxed text-[var(--muted)] mt-5 mb-2">
               Counts reflect public YouTube Data API responses. Subscriber counts can be rounded or hidden; likes and comments may be unavailable for some videos. This does not access YouTube Studio private analytics.
             </motion.p>
+
+            <motion.section variants={item} className="mt-6">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-3">
+                <div>
+                  <p className="eyebrow">Niche intelligence</p>
+                  <h2 className="text-[22px] font-semibold tracking-[-0.04em] mt-2">Channels worth studying</h2>
+                  <p className="text-[11.5px] text-[var(--muted)] mt-1 max-w-2xl">Suggestions are matched from your channel name and recent upload topics, then ranked by topic overlap and public channel totals. They are comparison candidates, not proof of what causes growth.</p>
+                  {competitorQuery && <p className="mono text-[9px] text-[var(--muted)] mt-2">Topic query · {competitorQuery}</p>}
+                </div>
+                <button
+                  className="btn btn-ghost btn-sm shrink-0"
+                  disabled={competitorBusy}
+                  onClick={async () => {
+                    setCompetitorBusy(true);
+                    setCompetitorError("");
+                    try {
+                      const result = await api.youtubeCompetitors(6) as { competitors?: Competitor[]; query?: string };
+                      setCompetitors(result.competitors || []);
+                      setCompetitorQuery(result.query || "");
+                    } catch (reason: any) {
+                      setCompetitorError(reason?.message || "Competitor suggestions could not be refreshed.");
+                    } finally {
+                      setCompetitorBusy(false);
+                    }
+                  }}
+                >{competitorBusy ? "Finding channels…" : "Refresh suggestions"}</button>
+              </div>
+              {competitorError && <div role="alert" className="border border-[var(--red)] bg-[var(--red-soft)] text-[var(--red)] px-3 py-2 text-[11.5px] mb-3">{competitorError}</div>}
+              {competitors.length === 0 ? (
+                <section className="panel p-5">
+                  <p className="text-[12px] text-[var(--muted)]">{competitorBusy ? "Comparing your recent upload topics with public YouTube channels…" : "No comparable channels found for the available topics yet. Try refreshing after your channel's recent uploads have loaded."}</p>
+                </section>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {competitors.map((competitor) => (
+                    <article key={competitor.id} className="panel overflow-hidden">
+                      <div className="p-4 flex items-start gap-3">
+                        {competitor.thumbnail ? (
+                          <img src={competitor.thumbnail} alt="" loading="lazy" className="w-12 h-12 rounded-full object-cover border border-[var(--hairline)]" />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-[var(--cobalt)] text-white flex items-center justify-center font-semibold">YT</div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-[13px] font-semibold leading-snug">{competitor.title}</h3>
+                          <p className="text-[10.5px] text-[var(--muted)] mt-0.5 truncate">{competitor.handle || competitor.id}</p>
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {competitor.matched_topics.slice(0, 3).map((topic) => <span key={topic} className="tag">{topic}</span>)}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 border-y border-[var(--hairline)] px-4 py-3">
+                        <div><p className="mono text-[8px] text-[var(--muted)] uppercase">Subscribers</p><p className="mono text-[11px] mt-1">{compact(competitor.subscribers)}</p></div>
+                        <div><p className="mono text-[8px] text-[var(--muted)] uppercase">Views</p><p className="mono text-[11px] mt-1">{compact(competitor.total_views)}</p></div>
+                        <div><p className="mono text-[8px] text-[var(--muted)] uppercase">Videos</p><p className="mono text-[11px] mt-1">{compact(competitor.video_count)}</p></div>
+                      </div>
+                      <div className="p-4">
+                        <p className="label mb-2">Recent uploads to compare</p>
+                        {competitor.recent_videos.length ? (
+                          <ul className="space-y-2">
+                            {competitor.recent_videos.slice(0, 3).map((video) => (
+                              <li key={video.id} className="border-l border-[var(--hairline-strong)] pl-2.5">
+                                <a href={video.url || competitor.url} target="_blank" rel="noreferrer" className="text-[11px] leading-snug hover:text-[var(--signal)]">{video.title}</a>
+                                <p className="mono text-[8.5px] text-[var(--muted)] mt-1">{video.views == null ? "Views unavailable" : `${Number(video.views).toLocaleString()} views`} · {dateLabel(video.published_at)}</p>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : <p className="text-[11px] text-[var(--muted)]">Recent public uploads unavailable.</p>}
+                        {competitor.description && <p className="text-[10.5px] leading-relaxed text-[var(--muted)] mt-3 line-clamp-3">{competitor.description}</p>}
+                        <a href={competitor.url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm mt-4 inline-flex">Study channel <ArrowUpRight size={13} /></a>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </motion.section>
           </motion.div>
         )}
       </AnimatePresence>
