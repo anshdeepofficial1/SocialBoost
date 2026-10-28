@@ -32,7 +32,7 @@ export const api = {
   deleteVideo: (id: string) => req(`/videos/${id}`, { method: "DELETE" }),
   jobStatus: (id: string) => req(`/analysis/job/${id}`),
   videoAnalysis: (id: string) => req(`/analysis/video/${id}`),
-  caption: (caption: string, platform: string) => req("/analysis/caption", { method: "POST", body: JSON.stringify({ caption, platform }) }),
+  caption: (caption: string, platform: string, kind = "auto") => req("/analysis/caption", { method: "POST", body: JSON.stringify({ caption, platform, kind }) }),
   hook: (hook_text: string, duration: number) => req("/analysis/hook", { method: "POST", body: JSON.stringify({ hook_text, duration }) }),
   predict: (payload: any) => req("/predictions/run", { method: "POST", body: JSON.stringify(payload) }),
   train: () => req("/predictions/train", { method: "POST" }),
