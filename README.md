@@ -120,6 +120,36 @@ Set `NEXT_PUBLIC_API_URL` if the backend is not on `http://127.0.0.1:8000`.
 * **Audio detection** — `has_audio` is reported as `false` because `ffprobe` is
   not part of this build.
 
+## Configure YouTube OAuth on Render
+
+The Integrations page only shows **Connect YouTube** after both `YT_CLIENT_ID` and
+`YT_CLIENT_SECRET` are configured on the backend. These are Google Cloud OAuth
+credentials; do not put the client secret in Vercel or the frontend.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), select or create a project.
+2. Open **APIs & Services → Library** and enable **YouTube Data API v3**.
+3. Configure **Google Auth Platform** (OAuth consent screen). While the app is in
+   Testing, add the Google account you will use to connect as a test user.
+4. Create an OAuth client of type **Web application**.
+5. Add this exact **Authorized redirect URI** to the OAuth client:
+   `https://socialboost-yzx2.onrender.com/social/oauth/youtube/callback`
+6. In Render → SocialBoost → **Environment**, set:
+   - `YT_CLIENT_ID` = the Web application client ID.
+   - `YT_CLIENT_SECRET` = the matching client secret.
+   - `OAUTH_REDIRECT_BASE` = `https://socialboost-yzx2.onrender.com` (base URL only, no callback path).
+   - `FRONTEND_URL` = `https://socialboostweb.vercel.app`.
+7. Save the environment variables and let Render deploy. Refresh
+   `/app/integrations`; YouTube should show **Connect YouTube**. Sign in with the
+   Google account that owns or manages the channel and approve the read-only
+   YouTube scope.
+
+Google requires the redirect URI in the request to exactly match an authorized
+URI on the OAuth client. For apps left in external **Testing** with YouTube
+scopes, refresh tokens can expire after seven days; publish/verify the consent
+screen as appropriate before relying on long-running unattended syncs. See the
+[Google server-side OAuth guide](https://developers.google.com/youtube/data/guides/auth/server-side-web-apps)
+and [Google OAuth token lifetime rules](https://developers.google.com/identity/protocols/oauth2).
+
 ## ML scripts
 
 ```bash
