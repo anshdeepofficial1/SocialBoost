@@ -10,6 +10,7 @@ export default function SettingsPage() {
   const [prefs, setPrefs] = useState<any>({ theme: "light", timezone: "UTC", platforms: "instagram,youtube", target_audience: "" });
   const [models, setModels] = useState<any[]>([]);
   const [model, setModel] = useState<any>(null);
+  const [coachModel, setCoachModel] = useState<any>(null);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -28,6 +29,7 @@ export default function SettingsPage() {
     api.getPrefs().then(setPrefs).catch(() => {});
     api.modelStatus().then(setModels).catch(() => {});
     api.modelDetail().then(setModel).catch(() => {});
+    api.coachStatus().then(setCoachModel).catch(() => setCoachModel({ available: false }));
     api.socialAccounts().then(setAccounts).catch(() => {});
   }, []);
 
@@ -52,13 +54,19 @@ export default function SettingsPage() {
     setMsg("");
     try {
       const r: any = await api.train();
-      setMsg(
-        r.status === "trained"
-          ? `Training complete — ${r.n_samples} samples, R² ${r.metrics?.r2?.toFixed(3) ?? "—"}.`
-          : r.message || "Training did not run."
-      );
+      const coach = r.growth_coach;
+      const primaryMessage = r.status === "trained"
+        ? `View model trained — ${r.n_samples} real-view samples, R² ${r.metrics?.r2?.toFixed(3) ?? "—"}.`
+        : r.message || "View-model training did not run.";
+      const coachMessage = coach?.status === "trained"
+        ? ` Growth Coach trained — ${coach.n_samples} samples.`
+        : coach?.message
+          ? ` Growth Coach: ${coach.message}`
+          : "";
+      setMsg(primaryMessage + coachMessage);
       api.modelStatus().then(setModels);
       api.modelDetail().then(setModel);
+      api.coachStatus().then(setCoachModel);
     } catch (e: any) {
       setMsg(e.message);
     } finally {
@@ -165,6 +173,37 @@ export default function SettingsPage() {
               <button className="btn btn-ghost btn-sm" onClick={train} disabled={busy}>Train models</button>
               <Link href="/app/datasets" className="btn btn-ghost btn-sm">Dataset import</Link>
             </div>
+          </Panel>
+
+          <Panel title="Growth Coach model" aside={<span className={`tag ${coachModel?.available ? "tag-sage" : ""}`}>{coachModel?.available ? "ready" : "not trained"}</span>}>
+            <p className="text-[11.5px] leading-relaxed text-[var(--muted)]">
+              This content-aware model learns a growth index from the connected accounts’ post history, combining numeric performance signals with TF-IDF text features reduced by TruncatedSVD. It uses HistGradientBoostingRegressor median/quantile models and chronological validation.
+            </p>
+            {coachModel?.available ? (
+              <>
+                <dl className="mt-3">
+                  <div className="kv"><dt>Version</dt><dd>{coachModel.version || "—"}</dd></div>
+                  <div className="kv"><dt>Training posts</dt><dd>{coachModel.n_samples ?? "—"}</dd></div>
+                  <div className="kv"><dt>Validation folds</dt><dd>{coachModel.cross_validation?.folds ?? 0}</dd></div>
+                  <div className="kv"><dt>Rank correlation</dt><dd>{coachModel.cross_validation?.rank_correlation == null ? "—" : Number(coachModel.cross_validation.rank_correlation).toFixed(3)}</dd></div>
+                </dl>
+                {coachModel.top_features?.length > 0 && (
+                  <div className="mt-3">
+                    <p className="label mb-2">Important signals</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {coachModel.top_features.slice(0, 5).map((feature: any) => (
+                        <span key={feature.factor} className="tag">{String(feature.factor).replace(/_/g, " ")} · {Number(feature.importance).toFixed(2)}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="mono text-[9px] leading-relaxed text-[var(--muted)] mt-3">
+                {coachModel?.note || `Waiting for at least ${coachModel?.required ?? 10} posts with real view counts. Sync connected Instagram and YouTube accounts; CSV import is optional for older history.`}
+              </p>
+            )}
+            <button className="btn btn-ghost btn-sm mt-4" onClick={train} disabled={busy}>Train both models</button>
           </Panel>
 
           <Panel title="Data handling">
