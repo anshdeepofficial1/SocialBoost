@@ -232,7 +232,7 @@ export default function YouTubeStudio() {
       <PageHeader
         eyebrow="YouTube · Public analytics"
         title={<>Know the channel.<br />Read the signal.</>}
-        description="Look up any public YouTube channel for real channel totals and the latest ten uploads. Data comes from the server's YouTube Data API access; private Studio analytics are not included."
+        description="Your connected YouTube channel and its latest uploads load automatically. Use the optional lookup field only to inspect another public channel; private Studio analytics are not included."
         actions={
           <a href="/app/integrations" className="btn btn-ghost">
             Manage connected accounts <ArrowUpRight size={15} />
@@ -248,13 +248,13 @@ export default function YouTubeStudio() {
             void runLookup();
           }}
         >
-          <label className="sr-only" htmlFor="youtube-channel-lookup">YouTube channel handle, URL, or channel ID</label>
+          <label className="sr-only" htmlFor="youtube-channel-lookup">Optional public YouTube channel handle, URL, or channel ID</label>
           <div className="flex-1 flex items-center gap-3 border border-[var(--hairline-strong)] bg-[var(--paper)] px-3.5 rounded-[var(--r-sm)] focus-within:border-[var(--ink)] transition-colors">
             <Search size={17} className="text-[var(--muted)] shrink-0" />
             <input
               id="youtube-channel-lookup"
               className="w-full py-3 text-[13px] bg-transparent outline-none"
-              placeholder="Try @YouTube, a channel URL, or channel ID"
+              placeholder="Connected channel loads automatically · search another channel"
               value={lookup}
               onChange={(event) => setLookup(event.target.value)}
               autoComplete="off"
