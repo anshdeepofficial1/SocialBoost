@@ -298,8 +298,12 @@ def _graph_get(path: str, params: dict, access_token: str) -> dict:
     return response.json()
 
 
+class InstagramPagesNotFound(RuntimeError):
+    """Raised when Meta returns no manageable Facebook Pages for the user token."""
+
+
 class InstagramAccountNotFound(RuntimeError):
-    """Raised only when Meta successfully lists Pages but none has a linked professional Instagram account."""
+    """Raised when Pages are visible but none exposes a linked professional Instagram account."""
 
 
 def fetch_identity(platform: str, access_token: str) -> dict:
@@ -346,6 +350,13 @@ def fetch_identity(platform: str, access_token: str) -> dict:
         cursor = (page_result.get("paging") or {}).get("cursors", {}).get("after")
         if not cursor:
             break
+
+    if not pages:
+        raise InstagramPagesNotFound(
+            "Meta returned zero manageable Facebook Pages for this user token. "
+            "Verify pages_show_list permission and that the Facebook profile has access to the Page."
+        )
+    log.debug("Meta returned %s manageable Page(s) while resolving Instagram identity", len(pages))
 
     for page in pages:
         page_id = page.get("id")
