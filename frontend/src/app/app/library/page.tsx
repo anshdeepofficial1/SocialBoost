@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import Link from "next/link";
-import { ArrowUpRight, ExternalLink, Film, RefreshCw } from "lucide-react";
+import { ExternalLink, Film, RefreshCw } from "lucide-react";
 import { PageHeader, Panel, Empty, PlatformMark } from "@/components/app/ui";
 
 type LibraryPost = {
