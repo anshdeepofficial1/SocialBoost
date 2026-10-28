@@ -22,6 +22,33 @@ def test_caption_analysis_youtube_and_validation(app_client, admin):
     assert bad.status_code == 400
 
 
+def test_youtube_title_uses_title_rules_and_never_appends_caption_cta(app_client, admin):
+    r = app_client.post(
+        "/analysis/caption",
+        json={"caption": "Five Editing Mistakes Every Creator Should Avoid", "platform": "youtube", "kind": "title"},
+        headers=admin,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["content_kind"] == "youtube_title"
+    assert body["title_score"] == body["caption_score"]
+    assert body["improved_title"] == "Five Editing Mistakes Every Creator Should Avoid"
+    assert not body["improved_title"].endswith("Save this for later.")
+    assert body["alternative_titles"]
+
+
+def test_youtube_description_uses_description_rules_not_title_rules(app_client, admin):
+    r = app_client.post(
+        "/analysis/caption",
+        json={"caption": "Daily video editing tips for creators", "platform": "youtube", "kind": "description"},
+        headers=admin,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("content_kind") != "youtube_title"
+    assert body["improved_caption"].endswith("Save this for later.")
+
+
 def test_hook_analysis_scoring(app_client, admin):
     strong = app_client.post(
         "/analysis/hook",
