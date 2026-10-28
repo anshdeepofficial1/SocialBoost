@@ -47,6 +47,8 @@ export default function AnalysisReport() {
   const meta = r.metadata_analysis || {};
   const recs = r.recommendations || [];
   const prediction = meta.prediction || null;
+  const platformPredictions = meta.predictions_by_platform || { instagram: prediction };
+  const predictionPlatforms = [{ id: "instagram", label: "Instagram Reels" }, { id: "youtube", label: "YouTube Shorts" }];
   const ocrAvailable = hook.ocr_available === true;
 
   return (
@@ -135,26 +137,61 @@ export default function AnalysisReport() {
           </Panel>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Panel title="Opening / hook">
+            <Panel title="Opening · speech + screen text">
               <dl>
                 <div className="kv"><dt>Hook window</dt><dd>{hook.hook_window_seconds ?? 3}s</dd></div>
-                <div className="kv">
-                  <dt>Speech onset</dt>
-                  <dd className={hook.speech_onset_seconds == null ? "text-[var(--signal)]" : ""}>
-                    {hook.speech_onset_seconds ?? "unavailable"}
-                  </dd>
-                </div>
-                <div className="kv"><dt>On-screen text</dt><dd>{ocrAvailable ? `${hook.ocr_samples?.length ?? 0} samples` : "unavailable"}</dd></div>
+                <div className="kv"><dt>Speech status</dt><dd>{String(hook.speech_analysis || "not recorded").replace(/_/g, " ")}</dd></div>
+                <div className="kv"><dt>First speech</dt><dd>{hook.speech_onset_seconds == null ? "Not detected" : `${Number(hook.speech_onset_seconds).toFixed(2)}s`}</dd></div>
+                <div className="kv"><dt>Detected language</dt><dd>{hook.speech_language ? `${hook.speech_language}${hook.speech_language_probability != null ? ` · ${Math.round(hook.speech_language_probability * 100)}%` : ""}` : "Unknown"}</dd></div>
+                <div className="kv"><dt>OCR engine</dt><dd>{hook.ocr_engine || (ocrAvailable ? "Available" : "Unavailable")}</dd></div>
+                <div className="kv"><dt>Screen-text samples</dt><dd>{hook.ocr_segments?.length ?? hook.ocr_samples?.length ?? 0}</dd></div>
               </dl>
-              <p className="mt-4 text-[12px] leading-relaxed text-[var(--ink-2)]">
-                {hook.opening_text
-                  ? `“${hook.opening_text}”`
-                  : ocrAvailable
-                  ? "No readable on-screen text was found in the sampled frames."
-                  : "No on-screen text was extracted. Tesseract is not installed in this build, so the opening copy is reported as unknown."}
-              </p>
-              {hook.speech_analysis === "unavailable" && hook.speech_note && (
-                <p className="mt-3 mono text-[9px] leading-relaxed text-[var(--muted)] border-l border-[var(--signal)] pl-2.5">{hook.speech_note}</p>
+              <div className="mt-4">
+                <p className="label mb-2">Opening text</p>
+                <p className="text-[12px] leading-relaxed text-[var(--ink-2)]">{hook.opening_text || "No readable overlay text was found in the sampled opening frames."}</p>
+              </div>
+              <div className="mt-4 border-t border-[var(--hairline)] pt-4">
+                <p className="label mb-2">Speech transcript</p>
+                {hook.speech_transcript ? (
+                  <>
+                    <p className="text-[12px] leading-relaxed text-[var(--ink-2)] whitespace-pre-wrap">{hook.speech_transcript}</p>
+                    {hook.speech_transcript_truncated && <p className="mono text-[8.5px] text-[var(--signal)] mt-2">Transcript limited to the opening audio window; the full video was not transcribed.</p>}
+                  </>
+                ) : <p className="text-[11px] leading-relaxed text-[var(--muted)]">{hook.speech_note || "No transcript was returned for this file."}</p>}
+              </div>
+              {(hook.ocr_segments?.length > 0 || hook.speech_segments?.length > 0) && (
+                <div className="mt-4 border-t border-[var(--hairline)] pt-4">
+                  <p className="label mb-2">Timed evidence</p>
+                  {hook.ocr_segments?.length > 0 && (
+                    <ul className="space-y-2">
+                      {hook.ocr_segments.slice(0, 8).map((line: any, index: number) => {
+                        const alignment = (hook.screen_text_alignment || []).find((item: any) => item.text === line.text && item.time_seconds === line.time_seconds);
+                        return (
+                          <li key={`ocr-${index}`} className="border-l border-[var(--hairline-strong)] pl-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="mono text-[8.5px] text-[var(--muted)]">{Number(line.time_seconds || 0).toFixed(2)}s</span>
+                              {line.confidence != null && <span className="tag">{Math.round(Number(line.confidence) * 100)}% OCR confidence</span>}
+                              {alignment?.spoken_match === true && <span className="tag tag-sage">Matches speech</span>}
+                              {alignment?.spoken_match === false && alignment?.nearby_speech && <span className="tag tag-signal">Words differ</span>}
+                            </div>
+                            <p className="text-[11.5px] leading-relaxed mt-1">{line.text}</p>
+                            {alignment?.nearby_speech && <p className="text-[10px] text-[var(--muted)] mt-1">Nearby speech: {alignment.nearby_speech}</p>}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  {hook.speech_segments?.length > 0 && (
+                    <ul className="space-y-1.5 mt-3">
+                      {hook.speech_segments.slice(0, 10).map((segment: any, index: number) => (
+                        <li key={`speech-${index}`} className="flex items-start gap-3 text-[10.5px]">
+                          <span className="mono text-[8.5px] text-[var(--muted)] shrink-0">{Number(segment.start).toFixed(2)}–{Number(segment.end).toFixed(2)}s</span>
+                          <span className="leading-relaxed">{segment.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </Panel>
 
@@ -183,41 +220,43 @@ export default function AnalysisReport() {
             </Panel>
           </div>
 
-          <Panel
-            title="Reach estimate"
-            aside={
-              prediction?.model_version && prediction.model_version !== "none"
-                ? <span className="tag tag-sage"><span className="dot" />model {prediction.model_version}</span>
-                : <span className="tag tag-signal">no model</span>
-            }
-          >
-            {prediction?.performance_score != null ? (
-              <>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {[
-                    ["Score", `${prediction.performance_score}/100`],
-                    ["Expected views", `${prediction.expected_views_low?.toLocaleString()} – ${prediction.expected_views_high?.toLocaleString()}`],
-                    ["Category", String(prediction.category).replace(/_/g, " ")],
-                    ["Confidence", `${Math.round((prediction.confidence || 0) * 100)}%`],
-                  ].map(([k, v]) => (
-                    <div key={k}>
-                      <p className="mono text-[8.5px] uppercase tracking-[0.1em] text-[var(--muted)]">{k}</p>
-                      <p className="font-display font-medium text-[18px] mt-1">{v}</p>
+          <Panel title="Platform-specific reach estimates" aside={<span className="tag">Workspace ML · Random Forest</span>}>
+            <p className="text-[11.5px] leading-relaxed text-[var(--muted)] mb-4">The same analysed clip is scored separately for Instagram Reels and YouTube Shorts. These ranges are estimates from your workspace's real view history, not guarantees.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {predictionPlatforms.map((platform) => {
+                const result = platformPredictions[platform.id];
+                const scored = result?.performance_score != null;
+                return (
+                  <section key={platform.id} className="border border-[var(--hairline)] p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <PlatformMark platform={platform.id} size={24} />
+                      <h3 className="text-[13px] font-semibold">{platform.label}</h3>
                     </div>
-                  ))}
-                </div>
-                <p className="mt-4 mono text-[9px] leading-relaxed text-[var(--muted)]">{prediction.note}</p>
-              </>
-            ) : (
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                  <p className="text-[12.5px] text-[var(--ink-2)] leading-relaxed max-w-xl">
-                    {prediction?.note || "This workspace has no trained model, so reach is not estimated. The analysis above is still measured from the file."}
-                  </p>
-                </div>
-                <Link href="/app/datasets" className="btn btn-ghost btn-sm shrink-0">Train a model</Link>
-              </div>
-            )}
+                    {scored ? (
+                      <>
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-display text-[34px] font-semibold">{result.performance_score}</span>
+                          <span className="mono text-[9px] text-[var(--muted)]">/100 · {Math.round((result.confidence || 0) * 100)}% confidence</span>
+                        </div>
+                        <div className="mt-3"><Meter value={result.performance_score} tone={platform.id === "instagram" ? "signal" : "cobalt"} /></div>
+                        <dl className="mt-3">
+                          <div className="kv"><dt>Expected views</dt><dd>{result.expected_views_low == null ? "—" : `${Number(result.expected_views_low).toLocaleString()}–${Number(result.expected_views_high).toLocaleString()}`}</dd></div>
+                          <div className="kv"><dt>Category</dt><dd>{String(result.category || "unknown").replace(/_/g, " ")}</dd></div>
+                          <div className="kv"><dt>Model version</dt><dd>{result.model_version || "unknown"}</dd></div>
+                        </dl>
+                        <p className="mono text-[8.5px] text-[var(--muted)] mt-3 leading-relaxed">{result.note}</p>
+                      </>
+                    ) : (
+                      <div>
+                        <p className="text-[12px] font-medium">No score yet</p>
+                        <p className="text-[11px] text-[var(--muted)] mt-2 leading-relaxed">{result?.note || "No trained model result was returned for this platform."}</p>
+                        <Link href="/app/datasets" className="btn btn-ghost btn-sm mt-3">Sync account data & train</Link>
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
           </Panel>
 
           <Panel title={`Recommendations · ${recs.length}`} flush>
