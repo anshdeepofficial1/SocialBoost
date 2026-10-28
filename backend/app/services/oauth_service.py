@@ -298,6 +298,10 @@ def _graph_get(path: str, params: dict, access_token: str) -> dict:
     return response.json()
 
 
+class InstagramPagePermissionMissing(RuntimeError):
+    """Raised when the token does not have the required Page-list permission."""
+
+
 class InstagramPagesNotFound(RuntimeError):
     """Raised when Meta returns no manageable Facebook Pages for the user token."""
 
@@ -352,9 +356,34 @@ def fetch_identity(platform: str, access_token: str) -> dict:
             break
 
     if not pages:
+        # A granted OAuth scope and an empty Page edge mean different things.
+        # Check the actual user-token grants before showing the user a generic
+        # Page-access error. Never log or return the access token itself.
+        permission_result = _graph_get("me/permissions", {}, access_token)
+        permission_rows = permission_result.get("data") or []
+        permission_status = {
+            row.get("permission"): row.get("status")
+            for row in permission_rows
+            if row.get("permission")
+        }
+        if permission_status.get("pages_show_list") != "granted":
+            log.warning(
+                "Instagram OAuth token lacks granted pages_show_list permission; returned statuses: %s",
+                {
+                    name: permission_status.get(name, "not returned")
+                    for name in ("pages_show_list", "pages_read_engagement", "instagram_basic")
+                },
+            )
+            raise InstagramPagePermissionMissing(
+                "The Facebook user token does not have a granted pages_show_list permission."
+            )
+        log.warning(
+            "Instagram OAuth token has pages_show_list granted but Meta returned zero Pages; "
+            "check Facebook profile Page access and Business Portfolio assignment"
+        )
         raise InstagramPagesNotFound(
-            "Meta returned zero manageable Facebook Pages for this user token. "
-            "Verify pages_show_list permission and that the Facebook profile has access to the Page."
+            "Meta returned zero manageable Facebook Pages even though pages_show_list is granted. "
+            "Check Page access and Business Portfolio assignment for this Facebook profile."
         )
     log.debug("Meta returned %s manageable Page(s) while resolving Instagram identity", len(pages))
 
