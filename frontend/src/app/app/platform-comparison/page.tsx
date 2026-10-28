@@ -13,17 +13,28 @@ export default function PlatformComparison() {
   const [err, setErr] = useState("");
 
   const run = async () => {
+    if (!caption.trim()) {
+      setErr("Enter the shared caption/description first. A YouTube title is scored separately.");
+      return;
+    }
     setLoading(true);
     setErr("");
     try {
-      const [a, b, c, d] = await Promise.all([
-        api.caption(caption, "instagram"),
-        api.caption(title.trim() || caption, "youtube"),
+      const [
+        instagramCopy,
+        youtubeTitle,
+        youtubeDescription,
+        instagramPrediction,
+        youtubePrediction,
+      ] = await Promise.all([
+        api.caption(caption, "instagram", "caption"),
+        title.trim() ? api.caption(title.trim(), "youtube", "title") : Promise.resolve(null),
+        api.caption(caption, "youtube", "description"),
         api.predict({ platform: "instagram", caption, title: "", hashtags: "", duration_seconds: duration }),
         api.predict({ platform: "youtube", caption, title, hashtags: "", duration_seconds: duration }),
       ]);
-      setIg({ caption: a, pred: c });
-      setYt({ caption: b, pred: d });
+      setIg({ caption: instagramCopy, pred: instagramPrediction });
+      setYt({ title: youtubeTitle, description: youtubeDescription, pred: youtubePrediction });
     } catch (e: any) {
       setErr(e.message);
     } finally {
@@ -33,7 +44,13 @@ export default function PlatformComparison() {
 
   const Column = ({ name, platform, data }: { name: string; platform: string; data: any }) => {
     const pred = data?.pred;
-    const scored = pred && pred.performance_score != null;
+    const modelScored = pred && pred.performance_score != null;
+    const copyResult = platform === "youtube" ? data?.title : data?.caption;
+    const copyScore = copyResult
+      ? Number(platform === "youtube" ? (copyResult.title_score ?? copyResult.caption_score) : copyResult.caption_score)
+      : null;
+    const copyIssues = copyResult?.issues || [];
+    const description = platform === "youtube" ? data?.description : null;
     return (
       <section className="panel">
         <div className="flex items-center gap-3 px-5 py-4 border-b border-[var(--hairline)]">
@@ -48,13 +65,22 @@ export default function PlatformComparison() {
         ) : (
           <>
             <div className="p-5">
-              <div className="flex items-baseline justify-between">
-                <span className="mono text-[9px] uppercase tracking-[0.1em] text-[var(--muted)]">{platform === "youtube" ? "Title score" : "Caption score"}</span>
-                <span className="font-display font-semibold text-[28px] leading-none">{data.caption.caption_score}<span className="mono text-[10px] text-[var(--muted)]">/100</span></span>
-              </div>
-              <div className="mt-3"><Meter value={data.caption.caption_score} tone={platform === "instagram" ? "signal" : "cobalt"} /></div>
+              {copyResult ? (
+                <>
+                  <div className="flex items-baseline justify-between">
+                    <span className="mono text-[9px] uppercase tracking-[0.1em] text-[var(--muted)]">{platform === "youtube" ? "Title score · heuristic" : "Caption score · heuristic"}</span>
+                    <span className="font-display font-semibold text-[28px] leading-none">{copyScore}<span className="mono text-[10px] text-[var(--muted)]">/100</span></span>
+                  </div>
+                  <div className="mt-3"><Meter value={copyScore || 0} tone={platform === "instagram" ? "signal" : "cobalt"} /></div>
+                </>
+              ) : (
+                <div className="border border-dashed border-[var(--hairline-strong)] px-4 py-3">
+                  <p className="mono text-[8.5px] uppercase tracking-[0.1em] text-[var(--signal)]">Title not scored</p>
+                  <p className="text-[11.5px] text-[var(--muted)] leading-relaxed mt-1.5">Enter a YouTube Shorts title above. The description is scored separately below; it is not silently reused as the title.</p>
+                </div>
+              )}
 
-              {scored ? (
+              {modelScored ? (
                 <dl className="mt-5">
                   <div className="kv"><dt>Performance</dt><dd>{pred.performance_score}/100</dd></div>
                   <div className="kv"><dt>Category</dt><dd>{String(pred.category).replace(/_/g, " ")}</dd></div>
@@ -63,24 +89,68 @@ export default function PlatformComparison() {
                 </dl>
               ) : (
                 <div className="mt-5 border border-dashed border-[var(--hairline-strong)] px-4 py-3">
-                  <p className="mono text-[8.5px] uppercase tracking-[0.1em] text-[var(--signal)]">No model</p>
+                  <p className="mono text-[8.5px] uppercase tracking-[0.1em] text-[var(--signal)]">No trained view model</p>
                   <p className="text-[11.5px] text-[var(--muted)] leading-relaxed mt-1.5">
-                    Reach cannot be estimated until this workspace has a trained model. The caption rules below still apply.
+                    Reach cannot be estimated until this workspace has enough real view-history data. The text checks below are transparent heuristics, not a view prediction.
                   </p>
                 </div>
               )}
             </div>
 
             <div className="px-5 py-4 border-t border-[var(--hairline)]">
-              <p className="label mb-2">{platform === "youtube" ? "Title notes" : "Caption notes"}</p>
-              <p className="text-[12px] leading-relaxed text-[var(--ink-2)]">{data.caption.improved_caption}</p>
-              {platform === "youtube" && !title.trim() && <p className="mono text-[8.5px] text-[var(--muted)] mt-2">No title entered, so the shared caption/description is used as a temporary title for this score.</p>}
-              {data.caption.issues?.length > 0 && (
-                <ul className="mt-3 space-y-1.5">
-                  {data.caption.issues.map((i: string, n: number) => (
-                    <li key={n} className="text-[11px] text-[var(--muted)] border-l border-[var(--hairline-strong)] pl-2.5">{i}</li>
-                  ))}
-                </ul>
+              {platform === "instagram" ? (
+                <>
+                  <p className="label mb-2">Caption notes</p>
+                  <p className="text-[12px] leading-relaxed text-[var(--ink-2)]">{copyResult?.improved_caption || "No caption was supplied."}</p>
+                  {copyIssues.length > 0 && (
+                    <ul className="mt-3 space-y-1.5">
+                      {copyIssues.map((issue: string, index: number) => (
+                        <li key={index} className="text-[11px] text-[var(--muted)] border-l border-[var(--hairline-strong)] pl-2.5">{issue}</li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="label mb-2">YouTube title notes</p>
+                  <p className="text-[12px] leading-relaxed text-[var(--ink-2)]">{copyResult?.improved_title || "Add a title to receive title-specific feedback."}</p>
+                  {copyIssues.length > 0 && (
+                    <ul className="mt-3 space-y-1.5">
+                      {copyIssues.map((issue: string, index: number) => (
+                        <li key={index} className="text-[11px] text-[var(--muted)] border-l border-[var(--hairline-strong)] pl-2.5">{issue}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {copyResult?.alternative_titles?.length > 0 && (
+                    <div className="mt-4">
+                      <p className="label mb-2">Title angles to test</p>
+                      <ul className="space-y-2">
+                        {copyResult.alternative_titles.slice(0, 3).map((suggestion: string, index: number) => (
+                          <li key={index} className="flex items-start gap-2 border-l border-[var(--hairline-strong)] pl-3">
+                            <span className="mono text-[8.5px] text-[var(--muted)]">{String(index + 1).padStart(2, "0")}</span>
+                            <span className="text-[11.5px] leading-relaxed">{suggestion}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {description && (
+                    <div className="mt-5 pt-4 border-t border-[var(--hairline)]">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className="label">YouTube description score · heuristic</p>
+                        <span className="mono text-[11px] shrink-0">{description.caption_score}/100</span>
+                      </div>
+                      <p className="text-[12px] leading-relaxed text-[var(--ink-2)] mt-2">{description.improved_caption}</p>
+                      {description.issues?.length > 0 && (
+                        <ul className="mt-3 space-y-1.5">
+                          {description.issues.map((issue: string, index: number) => (
+                            <li key={index} className="text-[11px] text-[var(--muted)] border-l border-[var(--hairline-strong)] pl-2.5">{issue}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </>
@@ -94,18 +164,18 @@ export default function PlatformComparison() {
       <PageHeader
         eyebrow="Platforms · 04"
         title={<>One edit. Two audiences.</>}
-        description="Both platforms are evaluated in one run. Instagram Reels uses a caption; YouTube Shorts has a separate title plus a description, so the title is applied only to YouTube."
+        description="Both platforms are evaluated in one run. Instagram gets caption-specific checks; YouTube Shorts gets a separate title score and description score. View estimates are shown only when a trained model and enough real history are available."
       />
 
       <Panel title="Shared asset" className="mb-4">
         <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr] gap-3">
           <div>
-            <label className="field-label" htmlFor="caption">Caption / description (shared text)</label>
+            <label className="field-label" htmlFor="caption">Instagram caption / YouTube description</label>
             <textarea id="caption" className="field h-[88px] resize-y" placeholder="Instagram caption and YouTube description…" value={caption} onChange={(e) => setCaption(e.target.value)} />
           </div>
           <div>
-            <label className="field-label" htmlFor="title">YouTube Shorts title only</label>
-            <input id="title" className="field" placeholder="Title used only for YouTube" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <label className="field-label" htmlFor="title">Separate YouTube Shorts title</label>
+            <input id="title" className="field" placeholder="Enter the title separately" value={title} onChange={(e) => setTitle(e.target.value)} />
             <label className="field-label mt-3" htmlFor="dur">Duration (s)</label>
             <input id="dur" type="number" min={0} max={3600} className="field" value={duration} onChange={(e) => setDuration(Number(e.target.value))} />
           </div>
