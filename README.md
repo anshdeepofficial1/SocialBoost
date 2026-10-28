@@ -120,6 +120,12 @@ Set `NEXT_PUBLIC_API_URL` if the backend is not on `http://127.0.0.1:8000`.
 * **Audio detection** — `has_audio` is reported as `false` because `ffprobe` is
   not part of this build.
 
+## Configure public YouTube channel lookups
+
+The public analytics page at `/app/youtube` can use a server-side `YOUTUBE_API_KEY` to read public channel totals and recent uploads without depending on a user's OAuth access token. In Google Cloud Console, enable **YouTube Data API v3**, create an API key, and restrict the key to that API. Add `YOUTUBE_API_KEY` to the **Render backend environment only**; never add it to Vercel or a `NEXT_PUBLIC_*` variable, and never commit it to GitHub.
+
+When a server key is configured, public-channel requests use the key without sending the connected account's OAuth bearer token. If the key is not configured, SocialBoost falls back to the connected Google account and attempts to refresh expired access tokens. The OAuth-only connected-channel path continues to use OAuth rather than an API key.
+
 ## Configure YouTube OAuth on Render
 
 The Integrations page only shows **Connect YouTube** after both `YT_CLIENT_ID` and
