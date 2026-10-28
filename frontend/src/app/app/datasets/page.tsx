@@ -12,6 +12,8 @@ export default function Datasets() {
   const [imports, setImports] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [training, setTraining] = useState(false);
+  const [syncingAccounts, setSyncingAccounts] = useState(false);
+  const [dataSummary, setDataSummary] = useState<any>(null);
   const [err, setErr] = useState("");
   const [trainMsg, setTrainMsg] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -21,7 +23,7 @@ export default function Datasets() {
     api.modelDetail().then(setModel).catch(() => {});
     api.datasetImports().then(setImports).catch(() => {});
   };
-  useEffect(() => { loadModels(); }, []);
+  useEffect(() => { loadModels(); api.analyticsSummary().then(setDataSummary).catch(() => {}); }, []);
 
   const submit = async () => {
     if (!file) return;
@@ -57,6 +59,48 @@ export default function Datasets() {
     }
   };
 
+  const syncConnectedData = async () => {
+    setSyncingAccounts(true);
+    setErr("");
+    setTrainMsg("");
+    try {
+      const accounts = await api.socialAccounts();
+      const linked = accounts.filter((account: any) =>
+        account.mode === "oauth" &&
+        account.status === "connected" &&
+        ["instagram", "youtube"].includes(account.platform)
+      );
+      if (linked.length === 0) {
+        setTrainMsg("No live-linked Instagram or YouTube account found. Connect the accounts in Accounts first; CSV import remains optional.");
+        return;
+      }
+      const results = await Promise.allSettled(linked.map((account: any) => api.syncSocial(account.id)));
+      const liveCount = results.filter((result: any) =>
+        result.status === "fulfilled" &&
+        String(result.value?.sync_source || "").startsWith("live ")
+      ).length;
+      const notes = results
+        .map((result: any) => result.status === "fulfilled" ? result.value?.sync_note : result.reason?.message)
+        .filter(Boolean);
+      const freshModel = await api.modelDetail().catch(() => ({ available: false }));
+      setModel(freshModel);
+      const summary = await api.analyticsSummary().catch(() => null);
+      if (summary) setDataSummary(summary);
+      loadModels();
+      setTrainMsg(
+        `Synced ${liveCount} of ${linked.length} live-linked account(s). ` +
+        (freshModel.available
+          ? `Model ${freshModel.version} is ready with ${freshModel.n_samples} real-view training samples.`
+          : `A trained model is not ready yet: ${summary?.historical_posts ?? 0} historical posts are recorded; at least 10 with real view counts are required.`) +
+        (notes.length ? ` Provider note: ${notes[0]}` : "")
+      );
+    } catch (e: any) {
+      setErr(e.message || "Could not sync connected account data.");
+    } finally {
+      setSyncingAccounts(false);
+    }
+  };
+
   const downloadTemplate = async () => {
     setErr("");
     try {
@@ -77,8 +121,13 @@ export default function Datasets() {
       <PageHeader
         eyebrow="Datasets"
         title={<>Import real performance.</>}
-        description="Historical posts train the prediction models. Every imported row is attributed to a platform and counted in analytics."
-        actions={<button className="btn btn-signal" onClick={train} disabled={training}>{training ? "Training…" : "Train models"}</button>}
+        description="SocialBoost can pull posts and real public metrics from connected Instagram and YouTube accounts. CSV import is optional, useful for older history that the providers do not expose."
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <button className="btn btn-ghost" onClick={syncConnectedData} disabled={syncingAccounts || training}>{syncingAccounts ? "Syncing accounts…" : "Sync connected data"}</button>
+            <button className="btn btn-signal" onClick={train} disabled={training || syncingAccounts}>{training ? "Training…" : "Train models"}</button>
+          </div>
+        }
       />
 
       {(trainMsg || err) && (
@@ -89,7 +138,22 @@ export default function Datasets() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-4">
         <div className="space-y-4">
-          <Panel title="Import CSV" aside={<button className="mono text-[9px] uppercase tracking-[0.1em] text-[var(--signal)]" onClick={downloadTemplate}>Download template</button>}>
+          <Panel title="Connected data first">
+            <p className="text-[12px] leading-relaxed text-[var(--muted)]">Use the connected accounts to fetch the latest available posts into the same training and analytics dataset. Provider APIs do not expose every historical/private metric, so missing metrics stay blank rather than becoming invented zeroes.</p>
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <div className="border border-[var(--hairline)] p-3">
+                <p className="mono text-[8px] uppercase tracking-[0.08em] text-[var(--muted)]">Stored posts</p>
+                <p className="font-display text-[23px] font-semibold mt-1">{dataSummary?.historical_posts ?? "—"}</p>
+              </div>
+              <div className="border border-[var(--hairline)] p-3">
+                <p className="mono text-[8px] uppercase tracking-[0.08em] text-[var(--muted)]">Model samples</p>
+                <p className="font-display text-[23px] font-semibold mt-1">{model?.available ? model.n_samples : "—"}</p>
+              </div>
+            </div>
+            <button className="btn btn-signal mt-4" onClick={syncConnectedData} disabled={syncingAccounts || training}>{syncingAccounts ? "Fetching Instagram + YouTube…" : "Fetch account data & refresh model"}</button>
+          </Panel>
+
+          <Panel title="Optional CSV history" aside={<button className="mono text-[9px] uppercase tracking-[0.1em] text-[var(--signal)]" onClick={downloadTemplate}>Download template</button>}>
             <div
               onClick={() => inputRef.current?.click()}
               className="border border-dashed border-[var(--hairline-strong)] px-6 py-10 text-center cursor-pointer hover:border-[var(--ink)]"
@@ -151,6 +215,10 @@ export default function Datasets() {
 
         <div className="space-y-4">
           <Panel title="Active model" aside={model ? <span className={`tag ${model.available ? "tag-sage" : ""}`}>{model.available ? "ready" : "none"}</span> : undefined}>
+            <div className="border-l-2 border-[var(--cobalt)] pl-3 mb-4">
+              <p className="text-[11.5px] font-semibold">Random Forest models</p>
+              <p className="text-[10.5px] text-[var(--muted)] leading-relaxed mt-1">RandomForestRegressor estimates views; RandomForestClassifier classifies above/below the workspace median. Inputs include duration, caption/title length, hashtags, publish hour/day and platform. They are trained only on this workspace's posts with actual view counts.</p>
+            </div>
             {model?.available ? (
               <dl>
                 <div className="kv"><dt>Version</dt><dd>{model.version}</dd></div>
