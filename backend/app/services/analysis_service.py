@@ -80,6 +80,175 @@ def _tesseract_available() -> bool:
         return False
 
 
+
+def _ocr_available() -> bool:
+    return _get_ocr_engine() is not None or _tesseract_available()
+
+
+def _extract_ocr_text(opening_frames: list[tuple[float, object]]) -> tuple[list[dict], bool, str]:
+    """Read opening-frame text with confidence scores and on-video timestamps."""
+    engine = _get_ocr_engine()
+    items: list[dict] = []
+    seen: set[str] = set()
+    if engine is not None:
+        successful_calls = 0
+        for timestamp, frame in opening_frames:
+            try:
+                result, _ = engine(frame)
+                successful_calls += 1
+                for line in result or []:
+                    if not isinstance(line, (tuple, list)) or len(line) < 3:
+                        continue
+                    text = re.sub(r"\s+", " ", str(line[1] or "")).strip()
+                    try:
+                        confidence = float(line[2])
+                    except (TypeError, ValueError):
+                        confidence = 0.0
+                    normalised = re.sub(r"\W+", "", text).casefold()
+                    if not text or confidence < 0.28 or not normalised or normalised in seen:
+                        continue
+                    seen.add(normalised)
+                    items.append({
+                        "text": text,
+                        "time_seconds": round(float(timestamp), 2),
+                        "confidence": round(min(1.0, max(0.0, confidence)), 3),
+                    })
+            except Exception:
+                log.debug("RapidOCR failed on one opening frame", exc_info=True)
+        if successful_calls:
+            items.sort(key=lambda row: row["time_seconds"])
+            return items, True, "RapidOCR"
+
+    if _tesseract_available():
+        import pytesseract
+
+        for timestamp, frame in opening_frames:
+            try:
+                text = re.sub(r"\s+", " ", pytesseract.image_to_string(frame)).strip()
+            except Exception:
+                continue
+            normalised = re.sub(r"\W+", "", text).casefold()
+            if text and normalised and normalised not in seen:
+                seen.add(normalised)
+                items.append({
+                    "text": text,
+                    "time_seconds": round(float(timestamp), 2),
+                    "confidence": None,
+                })
+        items.sort(key=lambda row: row["time_seconds"])
+        return items, True, "Tesseract"
+    return [], False, "unavailable"
+
+
+def _get_whisper_model():
+    global _WHISPER_MODEL, _WHISPER_INIT_ATTEMPTED
+    if _WHISPER_INIT_ATTEMPTED:
+        return _WHISPER_MODEL
+    with _WHISPER_LOCK:
+        if _WHISPER_INIT_ATTEMPTED:
+            return _WHISPER_MODEL
+        _WHISPER_INIT_ATTEMPTED = True
+        try:
+            from faster_whisper import WhisperModel
+
+            model_name = os.getenv("WHISPER_MODEL", "tiny").strip() or "tiny"
+            threads = max(1, min(4, os.cpu_count() or 2))
+            _WHISPER_MODEL = WhisperModel(
+                model_name,
+                device="cpu",
+                compute_type="int8",
+                cpu_threads=threads,
+                num_workers=1,
+            )
+            log.info("faster-whisper model initialised (model=%s, device=cpu, compute_type=int8)", model_name)
+        except Exception:
+            log.warning("faster-whisper model could not be initialised", exc_info=True)
+            _WHISPER_MODEL = None
+    return _WHISPER_MODEL
+
+
+def _transcribe_speech(path: str, has_audio: bool, media_duration: float = 0.0) -> dict:
+    """Transcribe speech locally with faster-whisper; no external inference API is used."""
+    if not has_audio:
+        return {
+            "status": "no_audio",
+            "transcript": "",
+            "segments": [],
+            "language": None,
+            "language_probability": None,
+            "speech_onset_seconds": None,
+            "truncated": False,
+            "note": "No audio stream was detected in this video.",
+        }
+    model = _get_whisper_model()
+    if model is None:
+        return {
+            "status": "unavailable",
+            "transcript": "",
+            "segments": [],
+            "language": None,
+            "language_probability": None,
+            "speech_onset_seconds": None,
+            "truncated": False,
+            "note": "Local speech recognition could not initialise. Check the faster-whisper install and backend memory limits.",
+        }
+    try:
+        max_seconds = max(30, min(int(os.getenv("WHISPER_MAX_SECONDS", "180")), 900))
+        segments, info = model.transcribe(
+            path,
+            beam_size=1,
+            vad_filter=True,
+            condition_on_previous_text=False,
+            clip_timestamps=[0, max_seconds],
+        )
+        rows = []
+        for segment in segments:
+            text = re.sub(r"\s+", " ", str(segment.text or "")).strip()
+            if not text:
+                continue
+            rows.append({
+                "start": round(float(segment.start), 2),
+                "end": round(float(segment.end), 2),
+                "text": text,
+            })
+            if len(rows) >= 180:
+                break
+        transcript = " ".join(row["text"] for row in rows)[:12000]
+        onset = rows[0]["start"] if rows else None
+        truncated = bool(media_duration > max_seconds and rows and rows[-1]["end"] >= max_seconds - 1)
+        if rows:
+            note = (
+                f"Transcribed locally with faster-whisper; analysis is limited to the first {max_seconds} seconds."
+                if truncated else "Transcribed locally with faster-whisper."
+            )
+            status = "done"
+        else:
+            note = "Audio was present, but no speech was confidently detected in the processed section."
+            status = "no_speech"
+        return {
+            "status": status,
+            "transcript": transcript,
+            "segments": rows,
+            "language": getattr(info, "language", None),
+            "language_probability": round(float(getattr(info, "language_probability", 0.0) or 0.0), 3),
+            "speech_onset_seconds": onset,
+            "truncated": truncated,
+            "note": note,
+        }
+    except Exception as exc:
+        log.warning("Local speech transcription failed for %s (%s)", os.path.basename(path), type(exc).__name__, exc_info=True)
+        return {
+            "status": "unavailable",
+            "transcript": "",
+            "segments": [],
+            "language": None,
+            "language_probability": None,
+            "speech_onset_seconds": None,
+            "truncated": False,
+            "note": "Speech transcription failed for this file. Check the backend logs for the decoder/model error.",
+        }
+
+
 def _measure(cap, frames) -> dict:
     brightness: list[float] = []
     contrast: list[float] = []
