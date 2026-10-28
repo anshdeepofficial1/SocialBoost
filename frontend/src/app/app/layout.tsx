@@ -81,7 +81,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   active ? "border-[var(--ink)]" : "border-[var(--hairline)] hover:border-[var(--hairline-strong)]"
                 }`}
               >
-                <PlatformMark platform={p} size={28} />
+                <PlatformMark platform={p} size={28} imageUrl={a?.profile_picture_url} />
                 <span className="min-w-0 flex-1">
                   <span className="block text-[12px] font-medium truncate">{a ? `@${a.handle}` : label}</span>
                   <span className="block text-[10px] uppercase tracking-[0.08em] text-[var(--muted)]">
