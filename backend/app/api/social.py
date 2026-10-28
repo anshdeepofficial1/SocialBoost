@@ -556,6 +556,10 @@ def oauth_callback(
             tokens["instagram_handle"] = handle
             tokens["instagram_display_name"] = display_name
             tokens["instagram_profile_picture_url"] = identity.get("profile_picture_url") or ""
+        else:
+            tokens["youtube_handle"] = handle
+            tokens["youtube_display_name"] = display_name
+            tokens["youtube_profile_picture_url"] = identity.get("profile_picture_url") or ""
     except oauth_service.YouTubeChannelNotFound:
         import logging
 
