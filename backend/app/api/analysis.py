@@ -64,9 +64,12 @@ def job_status(job_id: str, user=Depends(get_current_user), db: Session = Depend
 def caption_analysis(payload: dict, user=Depends(get_current_user)):
     caption = str(payload.get("caption") or "")
     platform = str(payload.get("platform") or "instagram").lower()
+    kind = str(payload.get("kind") or "auto").lower()
     if platform not in ("instagram", "youtube"):
         raise HTTPException(400, "platform must be 'instagram' or 'youtube'")
-    return analyze_caption(caption, platform)
+    if kind not in ("auto", "caption", "description", "title"):
+        raise HTTPException(400, "kind must be 'caption', 'description', or 'title'")
+    return analyze_caption(caption, platform, kind)
 
 
 @router.post("/hook")
