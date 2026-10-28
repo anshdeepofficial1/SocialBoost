@@ -109,6 +109,15 @@ export default function Integrations() {
           kind: "ok",
           text: `Instagram data synced: ${Number(result.followers || 0).toLocaleString()} followers and ${Number(result.post_count || 0).toLocaleString()} media items.${viewNote}`,
         });
+      } else if (result?.sync_source === "live YouTube API data") {
+        const metrics = result.live_metrics || {};
+        const averageNote = metrics.avg_views != null
+          ? ` Average views across the latest ${Number(metrics.avg_views_sample_size || 0).toLocaleString()} uploads: ${Number(metrics.avg_views).toLocaleString()}.`
+          : " Average views are currently unavailable for the recent uploads; the card will not substitute a made-up zero.";
+        setMsg({
+          kind: "ok",
+          text: `YouTube data synced: ${Number(result.followers || 0).toLocaleString()} subscribers, ${Number(result.post_count || 0).toLocaleString()} videos, and ${Number(metrics.total_views || 0).toLocaleString()} total channel views.${averageNote}`,
+        });
       } else if (result?.sync_note) {
         setMsg({ kind: "err", text: result.sync_note });
       } else {
@@ -226,9 +235,11 @@ export default function Integrations() {
                     </div>
 
                     <p className="text-[11px] text-[var(--muted)] leading-relaxed mt-4">
-                      {account.mode === "oauth"
-                        ? "Stats come from your connected platform where available. Some post insights may not be exposed by the platform."
-                        : "This profile is linked manually. Import a history file to populate analytics; live stats will not be fetched until the platform is connected."}
+                      {account.mode === "oauth" && account.platform === "youtube"
+                        ? "Subscriber and video totals come from YouTube. Average views is calculated from the latest up to 25 uploads whose view counts are available."
+                        : account.mode === "oauth"
+                          ? "Stats come from your connected platform where available. Some post insights may not be exposed by the platform."
+                          : "This profile is linked manually. Import a history file to populate analytics; live stats will not be fetched until the platform is connected."}
                     </p>
                     <p className="mono text-[9px] text-[var(--muted)] mt-2">
                       Last updated: {account.last_synced_at ? new Date(account.last_synced_at).toLocaleString() : "Not synced yet"}
