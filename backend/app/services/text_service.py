@@ -27,8 +27,112 @@ def _keywords(text: str, limit: int = 8) -> list[str]:
     return unique[:limit]
 
 
-def analyze_caption(caption: str, platform: str = "instagram") -> dict:
+def analyze_youtube_title(title: str) -> dict:
+    """Score a YouTube title with title-specific rules, not caption/CTA rules.
+
+    This is a transparent heuristic, not a click-through-rate prediction.
+    It never appends a caption call-to-action to the title.
+    """
+    text = (title or "").strip()
+    words = text.split()
+    length = len(text)
+    hashtags = re.findall(r"#\w+", text)
+    keywords = _keywords(text)
+
+    score = 55
+    adjustments: list[dict] = []
+    issues: list[str] = []
+
+    if 30 <= length <= 70:
+        score += 15
+        adjustments.append({"rule": "Title length 30–70 characters", "delta": 15})
+    elif 20 <= length < 30:
+        score += 5
+        adjustments.append({"rule": "Title length 20–29 characters", "delta": 5})
+    elif length < 20:
+        score -= 10
+        adjustments.append({"rule": "Title shorter than 20 characters", "delta": -10})
+        issues.append("The title may be too vague; add a specific subject or outcome.")
+    elif length <= 100:
+        score -= 5
+        adjustments.append({"rule": "Title length 71–100 characters", "delta": -5})
+        issues.append("Consider bringing the most important words closer to the beginning.")
+    else:
+        score -= 25
+        adjustments.append({"rule": "Title exceeds YouTube's 100-character limit", "delta": -25})
+        issues.append("Shorten the title to YouTube's 100-character maximum.")
+
+    if len(words) >= 3:
+        score += 8
+        adjustments.append({"rule": "At least three words provide context", "delta": 8})
+    else:
+        score -= 8
+        adjustments.append({"rule": "Fewer than three words", "delta": -8})
+        issues.append("Add enough context for viewers to understand what the Short delivers.")
+
+    if len(keywords) >= 2:
+        score += 8
+        adjustments.append({"rule": "Contains two or more descriptive keywords", "delta": 8})
+    else:
+        issues.append("Include the main topic or specific subject in the title.")
+
+    if re.search(r"\d", text):
+        score += 4
+        adjustments.append({"rule": "Uses a specific number or quantity", "delta": 4})
+
+    if "?" in text and len(words) >= 3:
+        score += 4
+        adjustments.append({"rule": "Uses a clear question", "delta": 4})
+
+    if hashtags:
+        score -= 8
+        adjustments.append({"rule": "Hashtags in title", "delta": -8})
+        issues.append("Move hashtags to the description rather than using title space.")
+
+    if not text:
+        issues = ["Enter a YouTube Shorts title to score it."]
+        score = 0
+
+    base = text.rstrip(" .!?")
+    candidates = []
+    if base:
+        for candidate in (
+            f"{base[:84]} — Explained",
+            f"What to Know About {base[:76]}",
+            f"{base[:82]}: Key Details",
+        ):
+            candidate = candidate[:100].strip()
+            if candidate and candidate.casefold() != text.casefold() and candidate not in candidates:
+                candidates.append(candidate)
+
+    score = max(0, min(100, score))
+    return {
+        "content_kind": "youtube_title",
+        "title_score": score,
+        # Keep the old field names for existing callers; these are aliases
+        # only and now hold the title score/text, not a rewritten caption.
+        "caption_score": score,
+        "length": length,
+        "word_count": len(words),
+        "hashtag_count": len(hashtags),
+        "has_cta": False,
+        "adjustments": adjustments,
+        "issues": issues,
+        "improved_title": text,
+        "improved_caption": text,
+        "alternative_titles": candidates,
+        "hashtags_suggested": [],
+        "keywords": keywords,
+    }
+
+
+def analyze_caption(caption: str, platform: str = "instagram", kind: str = "auto") -> dict:
     text = (caption or "").strip()
+    platform = (platform or "instagram").lower()
+    kind = (kind or "auto").lower()
+    if platform == "youtube" and kind in ("auto", "title"):
+        return analyze_youtube_title(text)
+
     words = text.split()
     length = len(text)
     hashtags = re.findall(r"#\w+", text)
@@ -75,7 +179,7 @@ def analyze_caption(caption: str, platform: str = "instagram") -> dict:
         improved = (improved + " Save this for later.").strip()
 
     alternative_titles: list[str] = []
-    if platform == "youtube" and text:
+    if platform == "youtube" and kind == "auto" and text:
         head = text[:60]
         alternative_titles = [head, f"How to {text[:40]}", f"{text[:40]} (explained)"]
 
