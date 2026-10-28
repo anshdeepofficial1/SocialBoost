@@ -95,13 +95,25 @@ def train_models(db: Session, workspace_id: str | None = None):
     X, feature_cols = _build_features(df)
     y_views = pd.to_numeric(df["views"], errors="coerce").fillna(0).astype(float).values
 
-    # Engagement rate per post, used as a second honest target statistic.
-    likes = pd.to_numeric(df["likes"], errors="coerce").fillna(0).astype(float).values
-    comments = pd.to_numeric(df["comments"], errors="coerce").fillna(0).astype(float).values
-    shares = pd.to_numeric(df["shares"], errors="coerce").fillna(0).astype(float).values
-    engagements = likes + comments + shares
-    with np.errstate(divide="ignore", invalid="ignore"):
-        engagement_rates = np.where(y_views > 0, engagements / np.maximum(y_views, 1), 0.0)
+    # Engagement estimates only use rows where every component of the
+    # documented rate (likes + comments + shares) is actually available.
+    # Missing provider metrics are not zero and must not bias the model.
+    likes = pd.to_numeric(df["likes"], errors="coerce").astype(float).values
+    comments = pd.to_numeric(df["comments"], errors="coerce").astype(float).values
+    shares = pd.to_numeric(df["shares"], errors="coerce").astype(float).values
+    engagement_valid = (
+        np.isfinite(likes) & np.isfinite(comments) & np.isfinite(shares) & (y_views > 0)
+    )
+    engagement_rates = np.full(len(y_views), np.nan, dtype=float)
+    engagement_rates[engagement_valid] = (
+        likes[engagement_valid] + comments[engagement_valid] + shares[engagement_valid]
+    ) / y_views[engagement_valid]
+    engagement_rates_by_platform = {}
+    for known_platform in df["platform"].fillna("instagram").astype(str).unique():
+        platform_mask = (df["platform"].fillna("instagram").astype(str).values == known_platform) & engagement_valid
+        engagement_rates_by_platform[str(known_platform)] = (
+            float(np.mean(engagement_rates[platform_mask])) if platform_mask.any() else None
+        )
 
     median_views = float(np.median(y_views))
     y_cat = (y_views > median_views).astype(int)
@@ -126,7 +138,7 @@ def train_models(db: Session, workspace_id: str | None = None):
     acc = float(accuracy_score(ytec, clf.predict(Xtec))) if len(ytec) else 0.0
 
     p10, p50, p90 = (float(np.percentile(y_views, p)) for p in (10, 50, 90))
-    mean_engagement = float(np.mean(engagement_rates)) if len(engagement_rates) else 0.0
+    mean_engagement = float(np.nanmean(engagement_rates)) if np.isfinite(engagement_rates).any() else None
     feature_importance = sorted(
         ({"factor": c, "importance": round(float(v), 4)} for c, v in zip(feature_cols, reg.feature_importances_)),
         key=lambda f: f["importance"],
@@ -144,6 +156,7 @@ def train_models(db: Session, workspace_id: str | None = None):
         "metrics": {"mae": mae, "r2": r2},
         "views_percentiles": {"p10": p10, "p50": p50, "p90": p90},
         "mean_engagement_rate": mean_engagement,
+        "mean_engagement_rate_by_platform": engagement_rates_by_platform,
         "feature_importance": feature_importance,
     }
     joblib.dump(artifact, views_path)
@@ -156,7 +169,7 @@ def train_models(db: Session, workspace_id: str | None = None):
         workspace_id=workspace_id,
         name="views_rf",
         version=version,
-        metrics={"mae": mae, "r2": r2, "n_samples": len(rows), "mean_engagement_rate": round(mean_engagement, 4), "p50_views": round(p50, 1)},
+        metrics={"mae": mae, "r2": r2, "n_samples": len(rows), "mean_engagement_rate": round(mean_engagement, 4) if mean_engagement is not None else None, "p50_views": round(p50, 1)},
         path=views_path,
     ))
     db.add(ModelVersion(
@@ -301,7 +314,8 @@ def predict(video_features: dict, platform: str, db: Session, workspace_id: str 
     acc = float(cat_art.get("accuracy", 0.0))
     confidence = _confidence_from(r2, int(reg_art.get("n_samples", 0)), acc)
 
-    mean_engagement = reg_art.get("mean_engagement_rate")
+    platform_engagement = reg_art.get("mean_engagement_rate_by_platform")
+    mean_engagement = (platform_engagement.get(platform) if isinstance(platform_engagement, dict) else reg_art.get("mean_engagement_rate"))
     spread = 0.25
     return {
         "performance_score": score,
