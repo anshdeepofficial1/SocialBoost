@@ -1,8 +1,7 @@
 # SocialBoost AI — Creator Analytics Studio
 
-Full-stack social video analysis studio: FastAPI + SQLite backend, Next.js frontend.
-Analysis, prediction, calendar and connected-account statistics all read from data
-you upload or import. Nothing in the UI is a placeholder metric.
+Full-stack social video analysis studio: FastAPI backend, Next.js frontend, SQLite for local development and durable PostgreSQL for production.
+Analysis, predictions, calendar and connected-account statistics read from uploaded files, real provider-synced Instagram/YouTube posts, and optional CSV history. Provider metrics that are not returned remain unavailable rather than being fabricated.
 
 ## Backend
 
@@ -155,6 +154,17 @@ scopes, refresh tokens can expire after seven days; publish/verify the consent
 screen as appropriate before relying on long-running unattended syncs. See the
 [Google server-side OAuth guide](https://developers.google.com/youtube/data/guides/auth/server-side-web-apps)
 and [Google OAuth token lifetime rules](https://developers.google.com/identity/protocols/oauth2).
+
+## Machine-learning and video-analysis methods
+
+The current workspace models in `backend/app/services/ml_service.py` are:
+
+- **RandomForestRegressor** (scikit-learn, 150 trees): predicts a video's view count from duration, caption length, title length, hashtag count, publication hour/day, and a one-hot platform feature. The expected-view interval is currently the prediction ±25%; it is a heuristic interval, not a calibrated statistical confidence interval.
+- **RandomForestClassifier** (scikit-learn, 150 trees): classifies an example as above or below the workspace's median observed view count. The classifier is used as a supporting category signal.
+- **Evaluation:** held-out MAE and R² for view regression, held-out accuracy for classification, plus the training-data p10/p50/p90 view percentiles and Random Forest feature importances. These metrics should be interpreted cautiously on small or imbalanced datasets.
+- **Training source:** workspace-scoped `HistoricalPost` rows with known, actual view counts from synced provider posts and/or CSV imports. Missing view counts are excluded from supervised training. Engagement-rate summaries only use rows with the required engagement components present.
+
+Video opening analysis additionally uses **faster-whisper** on CPU/int8 for local speech transcription and **RapidOCR** for OCR on sampled frames from the first three seconds. The system timestamps OCR text and speech segments and reports text overlap as evidence; it does not claim that this alignment alone predicts retention. Hook Lab and caption checks currently use transparent deterministic heuristics, not a generative language model. No external inference API is required for these local video-analysis steps, although the first use may need to download the local model assets and the hosted service must have enough memory to initialise them.
 
 ## ML scripts
 
