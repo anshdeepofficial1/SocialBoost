@@ -471,10 +471,20 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
             for key in ("total_views", "avg_views", "avg_views_sample_size")
         }
     if acc.platform == "youtube" and not live:
-        body["sync_note"] = (
-            "YouTube channel statistics could not be refreshed. Reconnect the Google account if its "
-            "authorization has expired, then check Render logs for the YouTube Data API error."
-        )
+        if tokens and tokens.get("_sync_needs_reauth"):
+            body["sync_note"] = (
+                "Google rejected the connected YouTube token after refresh was attempted. "
+                "Reconnect YouTube from Accounts to renew read-only access; previous counters are preserved."
+            )
+        else:
+            body["sync_note"] = (
+                "YouTube channel statistics could not be refreshed; previous counters are preserved. "
+                "Check Render logs for the safe YouTube API error category before changing permissions."
+            )
+        if tokens and tokens.get("_sync_error_type"):
+            body["sync_error_type"] = tokens.get("_sync_error_type")
+        if tokens and tokens.get("_sync_http_status") is not None:
+            body["sync_http_status"] = tokens.get("_sync_http_status")
     if acc.platform == "instagram" and not live:
         error_type = (tokens or {}).get("_sync_error_type")
         body["sync_error_type"] = error_type
