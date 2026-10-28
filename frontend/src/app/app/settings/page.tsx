@@ -150,12 +150,16 @@ export default function SettingsPage() {
           </Panel>
 
           <Panel title="ML models">
+            <div className="border-l-2 border-[var(--cobalt)] pl-3 mb-4">
+              <p className="text-[11.5px] font-semibold">Algorithms in this project</p>
+              <p className="text-[10.5px] text-[var(--muted)] leading-relaxed mt-1">RandomForestRegressor predicts view counts; RandomForestClassifier classifies posts above or below the workspace median. Both use scikit-learn and only train on this workspace's posts with known view counts. Text and video opening analysis are separately labelled as deterministic heuristics or local OCR/ASR evidence, not ML predictions.</p>
+            </div>
             <p className="text-[12px] leading-relaxed text-[var(--muted)]">
               {model?.available
                 ? `Model ${model.version} · ${model.n_samples} samples · R² ${model.metrics?.r2 != null ? model.metrics.r2.toFixed(3) : "—"}.`
                 : models.length
                 ? `${models.length} version${models.length > 1 ? "s" : ""} recorded, but no active model artifact was found for this workspace.`
-                : "No model trained yet. Import at least 10 historical posts, then train."}
+                : "No active model yet. Sync your connected Instagram and YouTube accounts first; at least 10 posts with real view counts are required. CSV import is optional for older history."}
             </p>
             <div className="flex flex-wrap gap-2 mt-4">
               <button className="btn btn-ghost btn-sm" onClick={train} disabled={busy}>Train models</button>
