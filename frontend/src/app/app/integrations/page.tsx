@@ -43,17 +43,29 @@ export default function Integrations() {
       });
     } else if (error) {
       const detail = params.get("detail");
-      const message = detail === "instagram_pages_permission_missing"
-        ? "Meta did not grant the pages_show_list permission to this connection. Check the Facebook Login permissions in Meta Developers, then reconnect and explicitly allow access to your Page."
-        : detail === "instagram_business_management_permission_missing"
-          ? "Meta granted pages_show_list but not business_management. This can leave Pages owned by a Business Portfolio invisible to SocialBoost. Enable the business_management permission for your Meta app (and request access/review if Meta requires it), then reconnect. If your Page is not owned by a Business Portfolio, check the Facebook profile's Page access instead."
-          : detail === "instagram_pages_not_found"
-            ? "Meta granted the required Page-list and Business Portfolio permissions but still returned no Pages. In Meta Business Suite, verify that the Facebook profile used for login has access to the correct Page and that the Page is assigned to that person in Business Settings. Then reconnect."
-            : detail === "instagram_business_account_not_found"
-              ? "Meta returned Facebook Pages, but none exposed a linked Instagram professional account. Confirm the Instagram account is Business or Creator, then check the Page's Linked accounts > Instagram setting. Make sure it is linked to one of the Pages selected during authorization, then reconnect."
-              : detail === "graph_lookup_failed"
-                ? "Meta accepted the login, but SocialBoost could not read the Instagram profile. Check the backend deployment logs for the Meta API error; no Facebook Page metrics were substituted for Instagram data."
-                : `The connection could not be completed${detail ? ` (${detail.replace(/_/g, " ")})` : ""}. Please try again.`;
+      const message = detail === "youtube_exchange_failed"
+        ? "Google sign-in returned an OAuth token-exchange error. Check that YT_CLIENT_ID and YT_CLIENT_SECRET belong to the same Web application client and that Google Cloud has this exact authorized redirect URI: https://socialboost-yzx2.onrender.com/social/oauth/youtube/callback. The detailed server error is in the Render logs."
+        : detail === "youtube_no_token"
+          ? "Google completed the redirect but did not return a YouTube access token. Reconnect and approve the requested YouTube read-only permission."
+          : detail === "youtube_channel_not_found"
+            ? "Google sign-in succeeded, but YouTube returned no channel for the selected Google account. Reconnect and select the Google account that owns or manages the YouTube channel."
+            : detail === "youtube_identity_lookup_failed"
+              ? "Google sign-in completed, but SocialBoost could not read the channel. Check that YouTube Data API v3 is enabled in the same Google Cloud project, the youtube.readonly scope is allowed, and the selected Google account manages a channel. Check Render logs for the exact API error."
+              : detail === "provider:access_denied"
+                ? "You cancelled or denied the provider's access request. Try connecting again and approve the requested read-only access."
+                : detail === "instagram_pages_permission_missing"
+                  ? "Meta did not grant the pages_show_list permission to this connection. Check the Facebook Login permissions in Meta Developers, then reconnect and explicitly allow access to your Page."
+                  : detail === "instagram_business_management_permission_missing"
+                    ? "Meta granted pages_show_list but not business_management. This can leave Pages owned by a Business Portfolio invisible to SocialBoost. Enable the business_management permission for your Meta app (and request access/review if Meta requires it), then reconnect. If your Page is not owned by a Business Portfolio, check the Facebook profile's Page access instead."
+                    : detail === "instagram_pages_not_found"
+                      ? "Meta granted the required Page-list and Business Portfolio permissions but still returned no Pages. In Meta Business Suite, verify that the Facebook profile used for login has access to the correct Page and that the Page is assigned to that person in Business Settings. Then reconnect."
+                      : detail === "instagram_business_account_not_found"
+                        ? "Meta returned Facebook Pages, but none exposed a linked Instagram professional account. Confirm the Instagram account is Business or Creator, then check the Page's Linked accounts > Instagram setting. Make sure it is linked to one of the Pages selected during authorization, then reconnect."
+                        : detail === "graph_lookup_failed"
+                          ? "Meta accepted the login, but SocialBoost could not read the Instagram profile. Check the backend deployment logs for the Meta API error; no Facebook Page metrics were substituted for Instagram data."
+                          : detail === "exchange_failed"
+                            ? "The provider rejected the token exchange. Verify the client credentials and exact OAuth callback URL in the provider console, then check Render logs."
+                            : `The connection could not be completed${detail ? ` (${detail.replace(/_/g, " ")})` : ""}. Please try again.`;
       setMsg({ kind: "err", text: message });
     }
     if (connected || error) window.history.replaceState({}, "", window.location.pathname);
@@ -259,7 +271,11 @@ export default function Integrations() {
                       </button>
                     </div>
                     {!provider.configured && (
-                      <p className="text-[11px] text-[var(--muted)] mt-3">Direct connection is not configured yet. You can add the profile manually and import history in the meantime.</p>
+                      <p className="text-[11px] text-[var(--muted)] mt-3">
+                        {instagram
+                          ? "Direct connection is not configured yet. You can add the profile manually and import history in the meantime."
+                          : "YouTube OAuth needs a Google Cloud Web application client. Enable YouTube Data API v3, then add YT_CLIENT_ID and YT_CLIENT_SECRET in the Render backend environment. Authorized redirect URI: https://socialboost-yzx2.onrender.com/social/oauth/youtube/callback"}
+                      </p>
                     )}
                     {oldPlaceholderExists && (
                       <p className="text-[11px] text-[var(--signal-deep)] mt-3">Your previous connection did not resolve to a real platform profile. Reconnect to finish linking the correct account.</p>
