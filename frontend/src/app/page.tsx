@@ -751,11 +751,12 @@ export default function Landing() {
               <Link href="/product" className="btn btn-dark">Product tour</Link>
             </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 py-10">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-8 py-10">
             {[
               ["Product", [["Overview", "/product"], ["How it works", "/how-it-works"], ["Pricing", "/pricing"]]],
               ["Studio", [["Overview", "/app"], ["Analyze", "/app/analyze"], ["Hook Lab", "/app/hook-lab"]]],
               ["Account", [["Sign in", "/login"], ["Create account", "/signup"], ["Accounts", "/app/integrations"]]],
+              ["Legal", [["Privacy policy", "/privacy"], ["Terms of service", "/terms"]]],
             ].map(([title, links]) => (
               <div key={title as string}>
                 <p className="label mb-4">{title as string}</p>
