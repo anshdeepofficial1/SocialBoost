@@ -62,7 +62,11 @@ def coach_status(user=Depends(get_current_user), db: Session = Depends(get_db)):
     )
     # Render can discard local model artifacts while the database survives.
     # Rebuild the workspace's coach model from its own real-view history.
-    if not current.get("available") and available_rows >= growth_model.MIN_ROWS:
+    needs_rebuild = (
+        not current.get("available")
+        or not str(current.get("version") or "").startswith("coach-v2-")
+    )
+    if needs_rebuild and available_rows >= growth_model.MIN_ROWS:
         try:
             growth_model.train(db, ws_id)
         except Exception:
