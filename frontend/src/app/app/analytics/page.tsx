@@ -221,9 +221,9 @@ export default function Analytics() {
                       <td className="px-4 py-2.5"><PlatformMark platform={p.platform} size={20} /></td>
                       <td className="px-4 py-2.5 mono text-[10px] text-[var(--muted)] whitespace-nowrap">{p.published_at ? new Date(p.published_at).toLocaleDateString() : "—"}</td>
                       <td className="px-4 py-2.5 mono">{p.views == null ? "—" : Number(p.views).toLocaleString()}</td>
-                      <td className="px-4 py-2.5 mono">{p.likes.toLocaleString()}</td>
-                      <td className="px-4 py-2.5 mono">{p.comments.toLocaleString()}</td>
-                      <td className="px-4 py-2.5 mono">{p.shares.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 mono">{p.likes == null ? "—" : Number(p.likes).toLocaleString()}</td>
+                      <td className="px-4 py-2.5 mono">{p.comments == null ? "—" : Number(p.comments).toLocaleString()}</td>
+                      <td className="px-4 py-2.5 mono">{p.shares == null ? "—" : Number(p.shares).toLocaleString()}</td>
                       <td className="px-4 py-2.5 mono text-[var(--signal)]">{p.engagement_rate == null ? "—" : (p.engagement_rate * 100).toFixed(2) + "%"}</td>
                     </tr>
                   ))}
