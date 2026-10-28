@@ -15,6 +15,15 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
+  const timezoneChoices = Array.from(new Set([
+    "Asia/Kolkata", "UTC", "Asia/Dubai", "Asia/Singapore", "Asia/Tokyo",
+    "Asia/Karachi", "Asia/Dhaka", "Asia/Bangkok", "Asia/Jakarta",
+    "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Istanbul",
+    "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+    "America/Toronto", "America/Vancouver", "Australia/Sydney", "Australia/Perth",
+    prefs.timezone || "UTC",
+  ])).sort((a, b) => a === "Asia/Kolkata" ? -1 : b === "Asia/Kolkata" ? 1 : a.localeCompare(b));
+
   useEffect(() => {
     api.getPrefs().then(setPrefs).catch(() => {});
     api.modelStatus().then(setModels).catch(() => {});
@@ -71,7 +80,6 @@ export default function SettingsPage() {
             <dl>
               <div className="kv"><dt>Name</dt><dd>{user?.full_name || "—"}</dd></div>
               <div className="kv"><dt>Email</dt><dd>{user?.email}</dd></div>
-              <div className="kv"><dt>Timezone</dt><dd>{user?.timezone || "UTC"}</dd></div>
               <div className="kv"><dt>Niche</dt><dd>{user?.niche || "Not set"}</dd></div>
             </dl>
           </Panel>
@@ -80,13 +88,12 @@ export default function SettingsPage() {
             <div className="space-y-3">
               <div>
                 <label className="field-label" htmlFor="tz">Timezone</label>
-                <input id="tz" className="field" list="tz-list" placeholder="Europe/London" value={prefs.timezone} onChange={(e) => setPrefs({ ...prefs, timezone: e.target.value })} />
-                <datalist id="tz-list">
-                  {["UTC", "Europe/London", "Europe/Berlin", "America/New_York", "America/Chicago", "America/Los_Angeles", "Asia/Kolkata", "Asia/Singapore", "Australia/Sydney"].map((z) => (
-                    <option key={z} value={z} />
+                <select id="tz" className="field" value={prefs.timezone || "UTC"} onChange={(e) => setPrefs({ ...prefs, timezone: e.target.value })}>
+                  {timezoneChoices.map((zone) => (
+                    <option key={zone} value={zone}>{zone.replace(/_/g, " ")}</option>
                   ))}
-                </datalist>
-                <p className="mono text-[8.5px] text-[var(--muted)] mt-1.5">IANA name. The server rejects unknown zones.</p>
+                </select>
+                <p className="mono text-[8.5px] text-[var(--muted)] mt-1.5">Used for calendar dates, schedules and release times. Choose one zone here, then save.</p>
               </div>
               <div>
                 <label className="field-label" htmlFor="platforms">Active platforms</label>
