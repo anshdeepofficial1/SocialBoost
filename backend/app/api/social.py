@@ -22,7 +22,10 @@ PLATFORMS = {
         "label": "Instagram",
         "product": "Reels",
         "auth_url": "https://www.facebook.com/v26.0/dialog/oauth",
-        "scope": "instagram_basic,instagram_manage_insights,instagram_content_publish,pages_show_list,pages_read_engagement",
+        # business_management can be necessary for /me/accounts to return
+        # Pages that are assets of a Business Portfolio. Without it, Meta may
+        # return data=[] even while pages_show_list is granted.
+        "scope": "instagram_basic,instagram_manage_insights,instagram_content_publish,pages_show_list,pages_read_engagement,business_management",
         "client_id_env": "IG_CLIENT_ID",
         "client_secret_env": "IG_CLIENT_SECRET",
     },
