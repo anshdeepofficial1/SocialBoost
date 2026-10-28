@@ -13,8 +13,11 @@ export default function Overview() {
   const [posts, setPosts] = useState<any[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [timezone, setTimezone] = useState("Asia/Kolkata");
 
   useEffect(() => {
+    api.getPrefs().then((prefs: any) => setTimezone(prefs?.timezone || "Asia/Kolkata"))
+      .catch(() => setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"));
     let cancelled = false;
     const loadWorkspace = async () => {
       const [initialSummary, initialEvents, initialVideos, initialAccounts, initialPosts] = await Promise.all([
@@ -222,7 +225,7 @@ export default function Overview() {
                   <div className="min-w-0 flex-1">
                     <p className="text-[12.5px] truncate">{e.title || e.caption || "Untitled release"}</p>
                     <p className="mono text-[9px] text-[var(--muted)] mt-0.5">
-                      {new Date(e.scheduled_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      {new Date(e.scheduled_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: timezone })}
                     </p>
                   </div>
                   <StatusTag status={e.is_sandbox && e.status !== "scheduled" ? "sandbox" : e.status} />
