@@ -68,7 +68,7 @@ def caption_analysis(payload: dict, user=Depends(get_current_user)):
     if platform not in ("instagram", "youtube"):
         raise HTTPException(400, "platform must be 'instagram' or 'youtube'")
     if kind not in ("auto", "caption", "description", "title"):
-        raise HTTPException(400, "kind must be 'caption', 'description', or 'title'")
+        raise HTTPException(400, "kind must be 'auto', 'caption', 'description', or 'title'")
     return analyze_caption(caption, platform, kind)
 
 
