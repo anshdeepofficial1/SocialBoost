@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { api, syncConnectedAccountsIfNeeded } from "@/lib/api";
 import Link from "next/link";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, Cell,
@@ -15,9 +15,35 @@ export default function Analytics() {
   const [sort, setSort] = useState<"views" | "date" | "engagement">("date");
 
   useEffect(() => {
-    api.analyticsSummary().then(setSummary).catch(() => {});
-    api.analyticsPosts().then(setPosts).catch(() => {});
-    api.socialAccounts().then(setAccounts).catch(() => {});
+    let cancelled = false;
+    const loadAnalytics = async () => {
+      const [initialSummary, initialPosts, initialAccounts] = await Promise.all([
+        api.analyticsSummary().catch(() => null),
+        api.analyticsPosts().catch(() => []),
+        api.socialAccounts().catch(() => []),
+      ]);
+      if (cancelled) return;
+      setSummary(initialSummary);
+      setPosts(initialPosts);
+      setAccounts(initialAccounts);
+      const storedPostCounts: Record<string, number> = {
+        instagram: Number(initialSummary?.by_platform?.instagram?.posts ?? initialPosts.filter((p: any) => p.platform === "instagram").length),
+        youtube: Number(initialSummary?.by_platform?.youtube?.posts ?? initialPosts.filter((p: any) => p.platform === "youtube").length),
+      };
+      await syncConnectedAccountsIfNeeded(initialAccounts, storedPostCounts);
+      if (cancelled) return;
+      const [freshSummary, freshPosts, freshAccounts] = await Promise.all([
+        api.analyticsSummary().catch(() => initialSummary),
+        api.analyticsPosts().catch(() => initialPosts),
+        api.socialAccounts().catch(() => initialAccounts),
+      ]);
+      if (cancelled) return;
+      setSummary(freshSummary);
+      setPosts(freshPosts);
+      setAccounts(freshAccounts);
+    };
+    void loadAnalytics();
+    return () => { cancelled = true; };
   }, []);
 
   const filtered = useMemo(() => {
@@ -113,7 +139,7 @@ export default function Analytics() {
         <Panel title="No history">
           <Empty
             title="Nothing to chart yet"
-            body="Connect your Instagram professional account and sync it, or import a CSV of past posts. SocialBoost will chart the data available to it."
+            body="Connect and sync your Instagram or YouTube account, or import a CSV of past posts. SocialBoost will chart the data each provider makes available."
             action={<Link href="/app/datasets" className="btn btn-signal btn-sm">Import CSV</Link>}
           />
         </Panel>
