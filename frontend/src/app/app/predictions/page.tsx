@@ -49,11 +49,17 @@ export default function Predictions() {
           duration_seconds: duration,
         };
         if (videoId) payload.video_id = videoId;
-        try {
-          return { platform: selectedPlatform, result: await api.predict(payload), error: "" };
-        } catch (reason: any) {
-          return { platform: selectedPlatform, result: null, error: reason?.message || "Prediction failed." };
-        }
+        const [viewOutcome, coachOutcome] = await Promise.allSettled([
+          api.predict(payload),
+          api.coachScore(payload),
+        ]);
+        return {
+          platform: selectedPlatform,
+          result: viewOutcome.status === "fulfilled" ? viewOutcome.value : null,
+          error: viewOutcome.status === "rejected" ? (viewOutcome.reason?.message || "View prediction failed.") : "",
+          coach: coachOutcome.status === "fulfilled" ? coachOutcome.value : null,
+          coachError: coachOutcome.status === "rejected" ? (coachOutcome.reason?.message || "Growth Coach could not score this content.") : "",
+        };
       }));
       setRes(results);
       loadModel();
@@ -181,18 +187,19 @@ export default function Predictions() {
                 const platformName = entry.platform === "instagram" ? "Instagram Reels" : "YouTube Shorts";
                 const result = entry.result;
                 const scored = result && result.performance_score != null;
-                return entry.error ? (
-                  <Panel key={entry.platform} title={platformName} aside={<span className="tag tag-signal">error</span>}>
+                const coach = entry.coach;
+                const mainResult = entry.error ? (
+                  <Panel key={`${entry.platform}-views`} title={platformName} aside={<span className="tag tag-signal">view model error</span>}>
                     <p className="text-[12px] leading-relaxed text-[var(--muted)]">{entry.error}</p>
                   </Panel>
                 ) : !scored ? (
-                  <Panel key={entry.platform} title={platformName} aside={<span className="tag tag-signal">not scored</span>}>
-                    <p className="font-display font-medium text-[18px] leading-snug">Not enough training data yet.</p>
-                    <p className="text-[12.5px] text-[var(--muted)] leading-relaxed mt-3">{result?.note || "No model result was returned."}</p>
+                  <Panel key={`${entry.platform}-views`} title={platformName} aside={<span className="tag tag-signal">view estimate unavailable</span>}>
+                    <p className="font-display font-medium text-[18px] leading-snug">View model needs more training data.</p>
+                    <p className="text-[12.5px] text-[var(--muted)] leading-relaxed mt-3">{result?.note || "No view-model result was returned."}</p>
                     <Link href="/app/datasets" className="btn btn-signal btn-sm mt-5">Sync data & train</Link>
                   </Panel>
                 ) : (
-                  <div key={entry.platform} className="panel-ink p-6">
+                  <div key={`${entry.platform}-views`} className="panel-ink p-6">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="mono text-[9px] uppercase tracking-[0.14em] text-[var(--night-muted)]">{platformName} · Performance score</p>
@@ -225,6 +232,65 @@ export default function Predictions() {
                         ))}
                       </div>
                     </div>
+                  </div>
+                );
+                return (
+                  <div key={entry.platform} className="space-y-3">
+                    {mainResult}
+                    <Panel title={`${platformName} · Growth Coach`} aside={<span className={`tag ${coach?.available ? "tag-sage" : ""}`}>{coach?.available ? "personalised" : "waiting for data"}</span>}>
+                      {coach?.available ? (
+                        <>
+                          <div className="flex flex-wrap items-end justify-between gap-3">
+                            <div>
+                              <p className="label">Growth index</p>
+                              <p className="font-display font-semibold text-[34px] leading-none mt-2">{Number(coach.growth_index).toFixed(1)}<span className="mono text-[10px] text-[var(--muted)]">/100</span></p>
+                            </div>
+                            <div className="text-right">
+                              <p className="label">Model-estimated range</p>
+                              <p className="mono text-[12px] mt-2">{coach.range?.[0] != null ? Number(coach.range[0]).toFixed(1) : "—"} – {coach.range?.[1] != null ? Number(coach.range[1]).toFixed(1) : "—"}</p>
+                              <p className="mono text-[9px] text-[var(--muted)] mt-1">{coach.confidence_label || "Confidence unavailable"}</p>
+                            </div>
+                          </div>
+                          <p className="text-[11px] text-[var(--muted)] leading-relaxed mt-3">{coach.percentile_reading || coach.note}</p>
+                          {coach.diagnosis?.length > 0 && (
+                            <div className="mt-4">
+                              <p className="label mb-2">Compared with your stronger posts</p>
+                              <ul className="space-y-2">
+                                {coach.diagnosis.slice(0, 4).map((item: any, i: number) => (
+                                  <li key={`${item.area || "diagnosis"}-${i}`} className="border-l border-[var(--hairline-strong)] pl-3">
+                                    <p className="text-[11.5px] font-medium">{String(item.area || "Signal").replace(/_/g, " ")}</p>
+                                    <p className="text-[11px] text-[var(--muted)] mt-0.5">{item.action}</p>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {coach.levers?.length > 0 && (
+                            <div className="mt-4">
+                              <p className="label mb-2">Useful next experiments</p>
+                              <ul className="space-y-2">
+                                {coach.levers.slice(0, 3).map((item: any, i: number) => (
+                                  <li key={`${item.lever || "lever"}-${i}`} className="flex items-start justify-between gap-3 border-t border-[var(--hairline)] pt-2">
+                                    <div className="min-w-0">
+                                      <p className="text-[11.5px] font-medium">{String(item.lever || "Experiment").replace(/_/g, " ")}</p>
+                                      <p className="text-[11px] text-[var(--muted)] leading-relaxed mt-0.5">{item.change}</p>
+                                    </div>
+                                    <span className="mono text-[9px] shrink-0">{Number(item.expected_lift) > 0 ? "+" : ""}{Number(item.expected_lift).toFixed(1)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          <p className="mono text-[9px] text-[var(--muted)] leading-relaxed mt-4">{coach.note}</p>
+                        </>
+                      ) : (
+                        <div>
+                          <p className="text-[12px] leading-relaxed text-[var(--muted)]">{coach?.note || entry.coachError || "Sync the connected accounts to train the Growth Coach on real post history."}</p>
+                          {entry.coachError && <p className="text-[11px] leading-relaxed text-[var(--red)] mt-2">{entry.coachError}</p>}
+                          <Link href="/app/datasets" className="btn btn-ghost btn-sm mt-3">Sync data & train</Link>
+                        </div>
+                      )}
+                    </Panel>
                   </div>
                 );
               })}
