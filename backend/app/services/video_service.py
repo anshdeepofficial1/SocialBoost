@@ -58,6 +58,19 @@ def save_upload(file: UploadFile, workspace_id: str, db: Session, max_bytes: int
     return video
 
 
+def has_audio_stream(path: str) -> bool:
+    """Detect an actual audio stream with PyAV instead of assuming every upload is silent."""
+    try:
+        import av
+
+        with av.open(path) as container:
+            return any(stream.type == "audio" for stream in container.streams)
+    except Exception:
+        # Metadata extraction must remain usable even if a malformed container
+        # or unsupported codec prevents probing.
+        return False
+
+
 def _extract_metadata(video: Video, path: str) -> None:
     cap = None
     try:
@@ -74,7 +87,7 @@ def _extract_metadata(video: Video, path: str) -> None:
         video.height = height
         video.duration_seconds = float(duration)
         video.aspect_ratio = _reduced_ratio(width, height) if width and height else ""
-        video.has_audio = False  # ffprobe is not available in this build
+        video.has_audio = has_audio_stream(path)
     except Exception:
         pass
     finally:
