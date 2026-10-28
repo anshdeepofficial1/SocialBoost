@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, syncConnectedAccountsIfNeeded } from "@/lib/api";
 import Link from "next/link";
 import { PageHeader, Stat, Panel, Empty, PlatformMark, StatusTag, Meter } from "@/components/app/ui";
 
@@ -12,11 +12,42 @@ export default function Overview() {
   const [posts, setPosts] = useState<any[]>([]);
 
   useEffect(() => {
-    api.analyticsSummary().then(setSummary).catch(() => {});
-    api.calendarEvents().then(setEvents).catch(() => {});
-    api.listVideos().then(setVideos).catch(() => {});
-    api.socialAccounts().then(setAccounts).catch(() => {});
-    api.analyticsPosts().then(setPosts).catch(() => {});
+    let cancelled = false;
+    const loadWorkspace = async () => {
+      const [initialSummary, initialEvents, initialVideos, initialAccounts, initialPosts] = await Promise.all([
+        api.analyticsSummary().catch(() => null),
+        api.calendarEvents().catch(() => []),
+        api.listVideos().catch(() => []),
+        api.socialAccounts().catch(() => []),
+        api.analyticsPosts().catch(() => []),
+      ]);
+      if (cancelled) return;
+      setSummary(initialSummary);
+      setEvents(initialEvents);
+      setVideos(initialVideos);
+      setAccounts(initialAccounts);
+      setPosts(initialPosts);
+
+      const storedPostCounts: Record<string, number> = {
+        instagram: Number(initialSummary?.by_platform?.instagram?.posts ?? initialPosts.filter((p: any) => p.platform === "instagram").length),
+        youtube: Number(initialSummary?.by_platform?.youtube?.posts ?? initialPosts.filter((p: any) => p.platform === "youtube").length),
+      };
+      await syncConnectedAccountsIfNeeded(initialAccounts, storedPostCounts);
+      if (cancelled) return;
+
+      // Pull both channels' post histories into the shared analytics view.
+      const [freshSummary, freshAccounts, freshPosts] = await Promise.all([
+        api.analyticsSummary().catch(() => initialSummary),
+        api.socialAccounts().catch(() => initialAccounts),
+        api.analyticsPosts().catch(() => initialPosts),
+      ]);
+      if (cancelled) return;
+      setSummary(freshSummary);
+      setAccounts(freshAccounts);
+      setPosts(freshPosts);
+    };
+    void loadWorkspace();
+    return () => { cancelled = true; };
   }, []);
 
   const upcoming = [...events]
