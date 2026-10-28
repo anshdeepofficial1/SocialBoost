@@ -12,7 +12,7 @@ from ..core.config import settings
 from ..db.session import get_db
 from ..models.calendar import HistoricalPost
 from ..models.social import SocialAccount
-from ..services import oauth_service, ml_service
+from ..services import oauth_service, ml_service, growth_model
 from .deps import get_current_user, get_workspace_id
 
 router = APIRouter(prefix="/social", tags=["social"])
@@ -214,8 +214,13 @@ def connect(payload: ConnectIn, user=Depends(get_current_user), db: Session = De
     return _serialize(acc, db)
 
 
-def _upsert_live_media(db: Session, workspace_id: str, platform: str, live: dict) -> None:
-    """Upsert provider-returned media into the common historical-post table."""
+def _upsert_live_media(db: Session, workspace_id: str, platform: str, live: dict) -> int:
+    """Upsert provider-returned media into the common historical-post table.
+
+    Return the number of identifiable provider items processed, so the sync
+    response can show whether data actually entered the shared dataset.
+    """
+    processed = 0
     for item in live.get("media") or []:
         post_id = item.get("post_id")
         if not post_id:
@@ -255,6 +260,9 @@ def _upsert_live_media(db: Session, workspace_id: str, platform: str, live: dict
                 setattr(row, key, int(value))
             elif is_new:
                 setattr(row, key, null())
+        processed += 1
+    return processed
+
 
 @router.post("/accounts/{account_id}/sync")
 def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(get_db)):
@@ -269,6 +277,7 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
 
     live = None
     tokens = None
+    media_processed = 0
     if acc.mode == "oauth" and acc.credential_ref:
         tokens = (
             oauth_service.load_fresh_youtube_tokens(db, ws_id)
@@ -288,7 +297,7 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
             acc.handle = live.get("handle") or acc.handle
             acc.display_name = live.get("display_name") or acc.display_name
             acc.external_id = live.get("external_id") or acc.external_id
-            _upsert_live_media(db, ws_id, acc.platform, live)
+            media_processed = _upsert_live_media(db, ws_id, acc.platform, live)
         acc.followers = int(live.get("followers", acc.followers) or 0)
         if "post_count" in live:
             acc.post_count = int(live.get("post_count") or 0)
@@ -321,6 +330,20 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
     db.commit()
     body = _serialize(acc, db)
     body["sync_source"] = acc_source
+    platform_rows = (
+        db.query(HistoricalPost)
+        .filter(
+            HistoricalPost.workspace_id == ws_id,
+            HistoricalPost.platform == acc.platform,
+        )
+        .all()
+    )
+    body["history_sync"] = {
+        "provider_items_received": len((live or {}).get("media") or []),
+        "records_processed": media_processed,
+        "stored_platform_posts": len(platform_rows),
+        "posts_with_views": sum(1 for row in platform_rows if row.views is not None),
+    }
 
     # Provider-synced media is immediately eligible for supervised training.
     # train_models refuses to fit until enough rows have real view counts.
@@ -371,6 +394,63 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
                 "status": "failed",
                 "message": "Sync completed, but automatic model training failed. Check backend logs.",
             }
+    # Train the content-aware growth model from the same account-synced
+    # dataset. Reuse a current artifact to avoid repeating heavy training on
+    # every request when both accounts are refreshed in quick succession.
+    if live:
+        try:
+            usable_rows = (
+                db.query(HistoricalPost)
+                .filter(
+                    HistoricalPost.workspace_id == ws_id,
+                    HistoricalPost.views.isnot(None),
+                )
+                .count()
+            )
+            if usable_rows < growth_model.MIN_ROWS:
+                body["growth_model_training"] = {
+                    "status": "insufficient_data",
+                    "n_samples": usable_rows,
+                    "required": growth_model.MIN_ROWS,
+                }
+            else:
+                coach_status = growth_model.status(ws_id)
+                try:
+                    trained_at = datetime.fromisoformat(coach_status.get("trained_at") or "")
+                except (TypeError, ValueError):
+                    trained_at = None
+                stale = (
+                    not coach_status.get("available")
+                    or trained_at is None
+                    or datetime.utcnow() - trained_at.replace(tzinfo=None) > timedelta(hours=24)
+                    or int(coach_status.get("n_samples") or 0) != usable_rows
+                )
+                body["growth_model_training"] = (
+                    growth_model.train(db, ws_id)
+                    if stale
+                    else {
+                        "status": "already_current",
+                        "n_samples": usable_rows,
+                        "version": coach_status.get("version"),
+                    }
+                )
+        except Exception:
+            import logging
+            logging.getLogger("socialboost.ml").exception(
+                "automatic growth-model training after %s sync failed for workspace %s",
+                acc.platform, ws_id,
+            )
+            body["growth_model_training"] = {
+                "status": "failed",
+                "message": "Account sync completed, but the content-aware growth model could not be refreshed. Check backend logs.",
+            }
+
+    if acc.platform == "youtube" and live and media_processed == 0:
+        body["sync_note"] = (
+            "YouTube channel totals refreshed, but no recent upload records were imported. "
+            "Check backend logs for the YouTube recent-video import error; no placeholder posts were created."
+        )
+
     if acc.platform == "instagram" and live:
         body["live_metrics"] = {
             key: live.get(key)
