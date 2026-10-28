@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, syncConnectedAccountsIfNeeded } from "@/lib/api";
 import Link from "next/link";
 import { ArrowUpRight, BarChart3, Users, Video } from "lucide-react";
 import { PageHeader, Panel, Empty, PlatformMark } from "@/components/app/ui";
@@ -41,11 +41,21 @@ export default function Recommendations() {
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const [videos, summary, posts, accounts, model] = await Promise.all([
+      const [videos, initialSummary, initialPosts, initialAccounts] = await Promise.all([
         api.listVideos().catch(() => []),
         api.analyticsSummary().catch(() => null),
         api.analyticsPosts().catch(() => []),
         api.socialAccounts().catch(() => []),
+      ]);
+      const storedPostCounts: Record<string, number> = {
+        instagram: Number(initialSummary?.by_platform?.instagram?.posts ?? initialPosts.filter((post: any) => post.platform === "instagram").length),
+        youtube: Number(initialSummary?.by_platform?.youtube?.posts ?? initialPosts.filter((post: any) => post.platform === "youtube").length),
+      };
+      await syncConnectedAccountsIfNeeded(initialAccounts, storedPostCounts);
+      const [summary, posts, accounts, model] = await Promise.all([
+        api.analyticsSummary().catch(() => initialSummary),
+        api.analyticsPosts().catch(() => initialPosts),
+        api.socialAccounts().catch(() => initialAccounts),
         api.modelDetail().catch(() => ({ available: false })),
       ]);
 
