@@ -254,7 +254,7 @@ export default function Integrations() {
 
                     <div className="flex flex-wrap gap-2 mt-5">
                       {account.mode === "oauth" && (
-                        <button className="btn btn-signal btn-sm" onClick={() => sync(account.id, account.platform) disabled={busy === account.id}>
+                        <button className="btn btn-signal btn-sm" onClick={() => sync(account.id, account.platform)} disabled={busy === account.id}>
                           {busy === account.id ? "Syncing…" : "Sync live stats"}
                         </button>
                       )}
