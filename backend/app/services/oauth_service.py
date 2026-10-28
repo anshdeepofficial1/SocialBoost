@@ -541,10 +541,15 @@ def fetch_identity(platform: str, access_token: str) -> dict:
         )
         recent = _youtube_recent_video_metrics(access_token, uploads_playlist_id)
         custom = snippet.get("customUrl") or ""
+        thumbnails = snippet.get("thumbnails") or {}
+        profile_picture_url = (
+            (thumbnails.get("high") or thumbnails.get("medium") or thumbnails.get("default") or {}).get("url", "")
+        )
         return {
             "handle": custom.lstrip("@") if custom else it.get("id", ""),
             "display_name": snippet.get("title") or "",
             "external_id": it.get("id", ""),
+            "profile_picture_url": profile_picture_url,
             "followers": int(stats.get("subscriberCount", 0) or 0),
             "post_count": int(stats.get("videoCount", 0) or 0),
             "total_views": int(stats.get("viewCount", 0) or 0),
