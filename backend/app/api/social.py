@@ -87,6 +87,8 @@ def _serialize(acc: SocialAccount, db: Session) -> dict:
     stats = _stats(db, acc.workspace_id, acc.platform)
     meta = PLATFORMS.get(acc.platform, {})
     is_live_linked = acc.mode == "oauth" and bool(acc.external_id)
+    credential_tokens = (oauth_service.load_tokens(db, acc.workspace_id, acc.platform) if is_live_linked else None) or {}
+    profile_picture_url = credential_tokens.get("instagram_profile_picture_url") or credential_tokens.get("youtube_profile_picture_url") or credential_tokens.get("profile_picture_url") or ""
     if is_live_linked and acc.platform == "instagram":
         evidence = (
             "Instagram professional account linked through Meta OAuth. "
@@ -105,6 +107,7 @@ def _serialize(acc: SocialAccount, db: Session) -> dict:
         "product": meta.get("product", ""),
         "handle": acc.handle,
         "display_name": acc.display_name,
+        "profile_picture_url": profile_picture_url,
         "status": acc.status,
         "mode": acc.mode,
         "scopes": [s for s in (acc.scopes or "").split(",") if s],
@@ -211,8 +214,8 @@ def connect(payload: ConnectIn, user=Depends(get_current_user), db: Session = De
     return _serialize(acc, db)
 
 
-def _upsert_live_media(db: Session, workspace_id: str, live: dict) -> None:
-    """Store returned Instagram media and preserve unavailable metrics as unknown."""
+def _upsert_live_media(db: Session, workspace_id: str, platform: str, live: dict) -> None:
+    """Upsert provider-returned media into the common historical-post table."""
     for item in live.get("media") or []:
         post_id = item.get("post_id")
         if not post_id:
@@ -221,7 +224,7 @@ def _upsert_live_media(db: Session, workspace_id: str, live: dict) -> None:
             db.query(HistoricalPost)
             .filter(
                 HistoricalPost.workspace_id == workspace_id,
-                HistoricalPost.platform == "instagram",
+                HistoricalPost.platform == platform,
                 HistoricalPost.post_id == post_id,
             )
             .first()
@@ -229,39 +232,29 @@ def _upsert_live_media(db: Session, workspace_id: str, live: dict) -> None:
         is_new = row is None
         if is_new:
             row = HistoricalPost(
-                workspace_id=workspace_id,
-                platform="instagram",
-                post_id=post_id,
-                views=null(),
-                shares=null(),
-                saves=null(),
-                reach=null(),
-                impressions=null(),
-                follows=null(),
-                profile_visits=null(),
-                avg_watch_seconds=null(),
-                retention=null(),
-                followers_at_publish=null(),
+                workspace_id=workspace_id, platform=platform, post_id=post_id,
+                views=null(), likes=null(), comments=null(), shares=null(), saves=null(),
+                reach=null(), impressions=null(), follows=null(), profile_visits=null(),
+                avg_watch_seconds=null(), retention=null(), followers_at_publish=null(),
             )
             db.add(row)
         row.caption = item.get("caption") or ""
-        row.title = item.get("title") or ""
-        row.content_type = item.get("content_type") or "post"
+        row.title = (item.get("title") or item.get("caption") or "")[:500]
+        row.content_type = item.get("content_type") or ("reel" if platform == "instagram" else "video")
+        duration = item.get("duration_seconds")
+        if duration is not None:
+            row.duration_seconds = float(duration)
         if item.get("published_at"):
             try:
-                row.published_at = datetime.fromisoformat(item["published_at"])
+                row.published_at = datetime.fromisoformat(str(item["published_at"]).replace("Z", "+00:00")).replace(tzinfo=None)
             except (TypeError, ValueError):
                 pass
-        for key in ("views", "likes", "comments", "shares", "saves", "reach"):
+        for key in ("views", "likes", "comments", "shares", "saves", "reach", "impressions"):
             value = item.get(key)
             if value is not None:
                 setattr(row, key, int(value))
             elif is_new:
-                # Do not let ORM column defaults turn an unsupported or
-                # unavailable provider metric into a misleading zero.
                 setattr(row, key, null())
-
-
 
 @router.post("/accounts/{account_id}/sync")
 def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(get_db)):
@@ -277,23 +270,25 @@ def sync(account_id: str, user=Depends(get_current_user), db: Session = Depends(
     live = None
     tokens = None
     if acc.mode == "oauth" and acc.credential_ref:
-        tokens = oauth_service.load_tokens(db, ws_id, acc.platform)
+        tokens = (
+            oauth_service.load_fresh_youtube_tokens(db, ws_id)
+            if acc.platform == "youtube"
+            else oauth_service.load_tokens(db, ws_id, acc.platform)
+        )
         if tokens:
             live = oauth_service.fetch_live_stats(acc.platform, tokens)
-            if acc.platform == "instagram" and live:
-                oauth_service.store_tokens(db, ws_id, acc.platform, tokens)
-            elif live and live.get("refreshed_password_grant"):
+            if live:
                 oauth_service.store_tokens(db, ws_id, acc.platform, tokens)
         else:
             acc.status = "needs_reauth"
 
     stats = _stats(db, ws_id, acc.platform)
     if live:
-        if acc.platform == "instagram":
+        if acc.platform in ("instagram", "youtube"):
             acc.handle = live.get("handle") or acc.handle
             acc.display_name = live.get("display_name") or acc.display_name
             acc.external_id = live.get("external_id") or acc.external_id
-            _upsert_live_media(db, ws_id, live)
+            _upsert_live_media(db, ws_id, acc.platform, live)
         acc.followers = int(live.get("followers", acc.followers) or 0)
         if "post_count" in live:
             acc.post_count = int(live.get("post_count") or 0)
