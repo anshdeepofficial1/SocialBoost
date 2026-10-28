@@ -421,6 +421,103 @@ def _youtube_recent_video_metrics(
         return {"avg_views": None, "avg_views_sample_size": 0}
 
 
+
+def _duration_seconds(value: str | None) -> float | None:
+    """Convert the ISO 8601 duration returned by YouTube to seconds."""
+    import re
+
+    if not value or not isinstance(value, str):
+        return None
+    match = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", value)
+    if not match:
+        return None
+    hours, minutes, seconds = (int(part or 0) for part in match.groups())
+    return float(hours * 3600 + minutes * 60 + seconds)
+
+
+def _optional_nonnegative_int(value) -> int | None:
+    if value is None:
+        return None
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _youtube_recent_videos(
+    access_token: str,
+    uploads_playlist_id: str,
+    max_results: int = 25,
+) -> list[dict]:
+    """Fetch real metadata and public metrics for a channel's latest uploads."""
+    if not uploads_playlist_id:
+        return []
+    headers = {"Authorization": f"Bearer {access_token}"}
+    try:
+        playlist_response = httpx.get(
+            f"{YOUTUBE_API}/playlistItems",
+            params={
+                "part": "snippet,contentDetails",
+                "playlistId": uploads_playlist_id,
+                "maxResults": max(1, min(int(max_results), 50)),
+            },
+            headers=headers,
+            timeout=TIMEOUT,
+        )
+        playlist_response.raise_for_status()
+        playlist_items = playlist_response.json().get("items") or []
+        video_ids = [
+            item.get("contentDetails", {}).get("videoId")
+            for item in playlist_items
+            if item.get("contentDetails", {}).get("videoId")
+        ]
+        if not video_ids:
+            return []
+
+        response = httpx.get(
+            f"{YOUTUBE_API}/videos",
+            params={"part": "snippet,statistics,contentDetails", "id": ",".join(video_ids[:50])},
+            headers=headers,
+            timeout=TIMEOUT,
+        )
+        response.raise_for_status()
+        videos = {
+            item.get("id"): item
+            for item in response.json().get("items") or []
+            if item.get("id")
+        }
+        rows = []
+        for entry in playlist_items:
+            video_id = (entry.get("contentDetails") or {}).get("videoId")
+            video = videos.get(video_id)
+            if not video:
+                continue
+            snippet = video.get("snippet") or {}
+            statistics = video.get("statistics") or {}
+            details = video.get("contentDetails") or {}
+            duration = _duration_seconds(details.get("duration"))
+            rows.append({
+                "post_id": video_id,
+                "title": snippet.get("title") or "Untitled video",
+                "caption": snippet.get("description") or "",
+                "published_at": snippet.get("publishedAt") or (entry.get("snippet") or {}).get("publishedAt"),
+                "duration_seconds": duration,
+                "content_type": "short" if duration is not None and duration <= 60 else "video",
+                "views": _optional_nonnegative_int(statistics.get("viewCount")),
+                "likes": _optional_nonnegative_int(statistics.get("likeCount")),
+                "comments": _optional_nonnegative_int(statistics.get("commentCount")),
+                "shares": None,
+                "saves": None,
+                "reach": None,
+                "impressions": None,
+                "permalink": f"https://www.youtube.com/watch?v={video_id}",
+            })
+        return rows
+    except Exception:
+        log.info("recent YouTube video import failed", exc_info=True)
+        return []
+
+
 def fetch_identity(platform: str, access_token: str) -> dict:
     """Resolve the actual linked Instagram professional account or YouTube channel."""
     if platform == "youtube":
@@ -618,7 +715,7 @@ def fetch_live_stats(platform: str, tokens: dict) -> dict | None:
                 return None
             r = httpx.get(
                 f"{YOUTUBE_API}/channels",
-                params={"part": "statistics,contentDetails", "mine": "true"},
+                params={"part": "snippet,statistics,contentDetails", "mine": "true"},
                 headers={"Authorization": f"Bearer {access}"},
                 timeout=TIMEOUT,
             )
@@ -627,17 +724,30 @@ def fetch_live_stats(platform: str, tokens: dict) -> dict | None:
             if not items:
                 return None
             channel = items[0]
-            stats = channel.get("statistics", {})
+            snippet = channel.get("snippet") or {}
+            stats = channel.get("statistics") or {}
             uploads_playlist_id = (
                 channel.get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads", "")
             )
-            recent = _youtube_recent_video_metrics(access, uploads_playlist_id)
+            media = _youtube_recent_videos(access, uploads_playlist_id, max_results=25)
+            view_counts = [row["views"] for row in media if row.get("views") is not None]
+            thumbnails = snippet.get("thumbnails") or {}
+            tokens["youtube_profile_picture_url"] = (
+                (thumbnails.get("high") or thumbnails.get("medium") or thumbnails.get("default") or {}).get("url", "")
+            )
+            tokens["youtube_handle"] = (snippet.get("customUrl") or "").lstrip("@")
+            tokens["youtube_display_name"] = snippet.get("title") or ""
             return {
+                "handle": tokens["youtube_handle"] or channel.get("id", ""),
+                "display_name": tokens["youtube_display_name"] or "YouTube channel",
+                "external_id": channel.get("id", ""),
+                "profile_picture_url": tokens["youtube_profile_picture_url"],
                 "followers": int(stats.get("subscriberCount", 0) or 0),
                 "post_count": int(stats.get("videoCount", 0) or 0),
                 "total_views": int(stats.get("viewCount", 0) or 0),
-                "avg_views": recent["avg_views"],
-                "avg_views_sample_size": recent["avg_views_sample_size"],
+                "avg_views": int(sum(view_counts) / len(view_counts)) if view_counts else None,
+                "avg_views_sample_size": len(view_counts),
+                "media": media,
                 "refreshed_password_grant": bool(tokens.get("refresh_token")),
             }
 
