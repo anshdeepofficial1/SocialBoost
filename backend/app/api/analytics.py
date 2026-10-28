@@ -27,11 +27,26 @@ def _engagement(views: int | None, likes: int, comments: int, shares: int) -> fl
 def _platform_metrics(rows: list[HistoricalPost]) -> dict:
     known_view_rows = [row for row in rows if row.views is not None]
     views = _sum_known(rows, "views")
-    likes = sum(row.likes or 0 for row in rows)
-    comments = sum(row.comments or 0 for row in rows)
-    shares = sum(row.shares or 0 for row in rows)
+    likes = _sum_known(rows, "likes")
+    comments = _sum_known(rows, "comments")
+    shares = _sum_known(rows, "shares")
+    engagement_rows = [
+        row for row in known_view_rows
+        if row.likes is not None and row.comments is not None and row.shares is not None
+    ]
+    engagement_views = sum(int(row.views) for row in engagement_rows) if engagement_rows else None
+    engagement_rate = (
+        _engagement(
+            engagement_views,
+            sum(int(row.likes) for row in engagement_rows),
+            sum(int(row.comments) for row in engagement_rows),
+            sum(int(row.shares) for row in engagement_rows),
+        )
+        if engagement_rows else None
+    )
     return {
         "posts": len(rows),
+        "posts_with_views": len(known_view_rows),
         "views": views,
         "likes": likes,
         "comments": comments,
@@ -42,12 +57,8 @@ def _platform_metrics(rows: list[HistoricalPost]) -> dict:
         "follows": _sum_known(rows, "follows"),
         "profile_visits": _sum_known(rows, "profile_visits"),
         "avg_views": int(views / len(known_view_rows)) if views is not None and known_view_rows else None,
-        "engagement_rate": _engagement(
-            views,
-            sum(row.likes or 0 for row in known_view_rows),
-            sum(row.comments or 0 for row in known_view_rows),
-            sum(row.shares or 0 for row in known_view_rows),
-        ),
+        "engagement_rate": engagement_rate,
+        "engagement_sample_size": len(engagement_rows),
     }
 
 
@@ -108,16 +119,23 @@ def posts(
             "id": row.id,
             "platform": row.platform,
             "published_at": row.published_at,
+            "title": row.title,
+            "caption": row.caption,
+            "content_type": row.content_type,
+            "duration_seconds": row.duration_seconds,
             "views": row.views,
             "likes": row.likes,
             "comments": row.comments,
             "shares": row.shares,
+            "saves": row.saves,
+            "reach": row.reach,
+            "impressions": row.impressions,
             "engagement_rate": _engagement(
                 row.views,
-                row.likes or 0,
-                row.comments or 0,
-                row.shares or 0,
-            ),
+                row.likes,
+                row.comments,
+                row.shares,
+            ) if row.views is not None and row.likes is not None and row.comments is not None and row.shares is not None else None,
         }
         for row in rows
     ]
