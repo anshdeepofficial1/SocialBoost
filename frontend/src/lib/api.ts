@@ -96,6 +96,8 @@ export async function syncConnectedAccountsIfNeeded(
   const now = Date.now();
   const due = accounts.filter((account) => {
     if (account.mode !== "oauth" || account.status !== "connected") return false;
+    if (/^(instagram|youtube)-user-/i.test((account as any).handle || "")) return false;
+    if (!["instagram", "youtube"].includes(account.platform)) return false;
     const lastSynced = account.last_synced_at ? new Date(account.last_synced_at).getTime() : 0;
     const missingHistory = Number(storedPostCounts[account.platform] || 0) === 0;
     const stale = !Number.isFinite(lastSynced) || now - lastSynced > staleAfterMs;
