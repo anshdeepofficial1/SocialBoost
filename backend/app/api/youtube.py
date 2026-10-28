@@ -56,14 +56,17 @@ def _api_get(resource: str, params: dict, token: str = "", *, prefer_api_key: bo
         except (ValueError, AttributeError):
             upstream_message = ""
         message = upstream_message or "YouTube Data API request failed."
-        if response.status_code == 403 and ("quota" in message.lower() or "limit" in message.lower()):
-            raise HTTPException(status_code=429, detail="YouTube API quota limit reached. Try again later.") from None
-        if response.status_code == 403:
-            raise HTTPException(status_code=502, detail="YouTube API denied the request. Check the server API key, API restrictions, and quota.") from None
         lowered = message.lower()
-        auth_error = response.status_code in (400, 401) and any(
+        auth_error = response.status_code in (400, 401, 403) and any(
             marker in lowered
-            for marker in ("invalid authentication credentials", "invalidcredentials", "api key not valid", "invalid api key")
+            for marker in (
+                "invalid authentication credentials",
+                "invalidcredentials",
+                "invalid credentials",
+                "unauthenticated",
+                "api key not valid",
+                "invalid api key",
+            )
         )
         if auth_error and key:
             raise HTTPException(
@@ -75,6 +78,10 @@ def _api_get(resource: str, params: dict, token: str = "", *, prefer_api_key: bo
                 status_code=502,
                 detail="Google rejected the connected YouTube access token. The token may have expired or been revoked. Reconnect YouTube in Integrations, or configure YOUTUBE_API_KEY on the backend for public channel lookups.",
             ) from None
+        if response.status_code == 403 and ("quota" in lowered or "limit" in lowered):
+            raise HTTPException(status_code=429, detail="YouTube API quota limit reached. Try again later.") from None
+        if response.status_code == 403:
+            raise HTTPException(status_code=502, detail="YouTube API denied the request. Check the server API key, API restrictions, and quota.") from None
         raise HTTPException(status_code=502, detail=message[:240]) from None
 
     return response.json()
