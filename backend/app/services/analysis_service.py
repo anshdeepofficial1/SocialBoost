@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from ..models.video import AnalysisJob, AnalysisResult, Video
 from . import ml_service
+from .video_service import has_audio_stream
 
 log = logging.getLogger("socialboost.analysis")
 
@@ -504,37 +505,37 @@ def run_analysis(job_id: str) -> None:
         measurements = _measure(cap, frames)
         cap.release()
 
+        # Update older uploads too: they may have been marked silent before
+        # audio stream probing was added to the upload pipeline.
+        audio_present = has_audio_stream(video.path)
+        video.has_audio = audio_present
         technical = {
             "duration_seconds": video.duration_seconds,
             "width": video.width,
             "height": video.height,
             "fps": video.fps,
             "aspect_ratio": video.aspect_ratio,
-            "has_audio": bool(video.has_audio),
+            "has_audio": audio_present,
             **measurements,
         }
         job.progress = 45
         db.commit()
 
         job.current_step = "read on-screen text"
-        ocr_available = _ocr_available()
-        ocr_text: list[str] = []
-        if ocr_available:
-            import pytesseract
+        opening_frames = _sample_opening_frames(video.path, seconds=3.0, n=8)
+        ocr_items, ocr_available, ocr_engine = _extract_ocr_text(opening_frames)
+        ocr_text = [str(item.get("text") or "") for item in ocr_items if item.get("text")]
+        job.progress = 56
+        db.commit()
 
-            for _, frame in frames[:4]:
-                try:
-                    text = pytesseract.image_to_string(frame).strip()
-                    if text:
-                        ocr_text.append(text)
-                except Exception:
-                    continue
-        job.progress = 60
+        job.current_step = "transcribe speech"
+        speech = _transcribe_speech(video.path, audio_present, float(video.duration_seconds or 0))
+        job.progress = 68
         db.commit()
 
         job.current_step = "assess the opening"
-        hook = _hook_report(technical, ocr_text, ocr_available)
-        job.progress = 72
+        hook = _hook_report(technical, ocr_items, ocr_available, ocr_engine, speech)
+        job.progress = 76
         db.commit()
 
         job.current_step = "check technical metadata"
@@ -543,23 +544,32 @@ def run_analysis(job_id: str) -> None:
         db.commit()
 
         job.current_step = "score with the workspace model"
-        prediction = None
-        try:
-            prediction = ml_service.predict(
-                {"duration_seconds": video.duration_seconds, "caption": "", "title": "", "hashtags": ""},
-                "instagram",
-                db,
-                video.workspace_id,
-            )
-        except Exception as exc:  # a missing or unreadable model must not fail the report
-            log.warning("prediction skipped for job %s: %s", job.id, exc)
-        meta["prediction"] = prediction
-        job.progress = 90
+        prediction_features = {
+            "duration_seconds": video.duration_seconds,
+            "caption": (speech.get("transcript") or "")[:12000],
+            "title": hook.get("opening_text") or "",
+            "hashtags": " ".join(re.findall(r"#[\\w]+", (speech.get("transcript") or "") + " " + " ".join(ocr_text))),
+        }
+        predictions = {}
+        for platform in ("instagram", "youtube"):
+            try:
+                predictions[platform] = ml_service.predict(
+                    prediction_features,
+                    platform,
+                    db,
+                    video.workspace_id,
+                )
+            except Exception as exc:  # a missing or unreadable model must not fail the report
+                log.warning("prediction skipped for job %s and %s: %s", job.id, platform, exc)
+                predictions[platform] = None
+        meta["prediction"] = predictions.get("instagram")
+        meta["predictions_by_platform"] = predictions
+        job.progress = 91
         db.commit()
 
         job.current_step = "generate recommendations"
         recs = _recommendations(meta, hook)
-        job.progress = 95
+        job.progress = 97
         db.commit()
 
         result = AnalysisResult(
