@@ -302,7 +302,24 @@ def _graph_get(path: str, params: dict, access_token: str) -> dict:
         params={**params, "access_token": access_token},
         timeout=TIMEOUT,
     )
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError:
+        # Meta's error payload gives the actionable Graph API code/message.
+        # Log only that structured error; never log request params or tokens.
+        try:
+            error = (response.json() or {}).get("error") or {}
+            log.warning(
+                "Meta Graph API request failed (status=%s, code=%s, subcode=%s, type=%s, message=%s)",
+                response.status_code,
+                error.get("code"),
+                error.get("error_subcode"),
+                error.get("type"),
+                str(error.get("message") or "No provider message")[:500],
+            )
+        except (ValueError, TypeError):
+            log.warning("Meta Graph API request failed (status=%s; error payload unavailable)", response.status_code)
+        raise
     return response.json()
 
 
