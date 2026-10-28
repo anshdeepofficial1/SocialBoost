@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import Link from "next/link";
-import { ArrowUpRight, ChartNoAxesCombined, Users, Video } from "lucide-react";
+import { ArrowUpRight, BarChart3, Users, Video } from "lucide-react";
 import { PageHeader, Panel, Empty, PlatformMark } from "@/components/app/ui";
 
 const AREA_LABEL: Record<string, string> = {
@@ -234,7 +234,7 @@ export default function Recommendations() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             {[
-              { title: "Evidence items", value: items.length, icon: ChartNoAxesCombined },
+              { title: "Evidence items", value: items.length, icon: BarChart3 },
               { title: "Connected sources", value: new Set(items.map((item) => item.platform).filter(Boolean)).size, icon: Users },
               { title: "Video reports", value: new Set(items.map((item) => item.videoId).filter(Boolean)).size, icon: Video },
               { title: "Competitor ideas", value: items.filter((item) => item.area === "competitor").length, icon: ArrowUpRight },
