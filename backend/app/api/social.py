@@ -426,8 +426,11 @@ def oauth_start(platform: str, request: Request, user=Depends(get_current_user),
         "state": row.state,
     }
     if platform == "youtube":
+        # Force account selection during testing and request a refresh token for
+        # durable background sync; keep the grant incremental and read-only.
         params["access_type"] = "offline"
-        params["prompt"] = "consent"
+        params["prompt"] = "consent select_account"
+        params["include_granted_scopes"] = "true"
     return {"authorize_url": f"{meta['auth_url']}?{urlencode(params)}", "state": row.state}
 
 
@@ -470,9 +473,17 @@ def oauth_callback(
         logging.getLogger("socialboost.oauth").info(
             "token exchange failed for %s", platform, exc_info=True
         )
-        return _frontend_redirect("error", platform, "exchange_failed")
+        return _frontend_redirect(
+            "error",
+            platform,
+            "youtube_exchange_failed" if platform == "youtube" else "exchange_failed",
+        )
     if not tokens.get("access_token"):
-        return _frontend_redirect("error", platform, "no_token")
+        return _frontend_redirect(
+            "error",
+            platform,
+            "youtube_no_token" if platform == "youtube" else "no_token",
+        )
 
     handle = ""
     display_name = ""
@@ -496,6 +507,14 @@ def oauth_callback(
             tokens["instagram_handle"] = handle
             tokens["instagram_display_name"] = display_name
             tokens["instagram_profile_picture_url"] = identity.get("profile_picture_url") or ""
+    except oauth_service.YouTubeChannelNotFound:
+        import logging
+
+        logging.getLogger("socialboost.oauth").warning(
+            "Google authorization completed but no YouTube channel was visible for workspace %s",
+            binding["workspace_id"],
+        )
+        return _frontend_redirect("error", platform, "youtube_channel_not_found")
     except oauth_service.InstagramPagePermissionMissing:
         import logging
 
@@ -542,7 +561,11 @@ def oauth_callback(
             platform,
             binding["workspace_id"],
         )
-        return _frontend_redirect("error", platform, "graph_lookup_failed")
+        return _frontend_redirect(
+            "error",
+            platform,
+            "youtube_identity_lookup_failed" if platform == "youtube" else "graph_lookup_failed",
+        )
 
     if not handle:
         handle = f"{platform}-user"
