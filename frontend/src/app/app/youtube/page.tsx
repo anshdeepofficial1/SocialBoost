@@ -21,7 +21,7 @@ type VideoItem = {
   description: string;
   thumbnail: string | null;
   published_at: string | null;
-  views: number;
+  views: number | null;
   likes: number | null;
   comments: number | null;
   duration: string;
@@ -36,8 +36,8 @@ type Dashboard = {
     description: string;
     thumbnail: string | null;
     subscribers: number | null;
-    total_views: number;
-    video_count: number;
+    total_views: number | null;
+    video_count: number | null;
     published_at: string | null;
     url: string;
   };
@@ -60,15 +60,15 @@ type Competitor = {
   description: string;
   thumbnail: string | null;
   subscribers: number | null;
-  total_views: number;
-  video_count: number;
+  total_views: number | null;
+  video_count: number | null;
   url: string;
   matched_topics: string[];
   recent_videos: CompetitorVideo[];
 };
 
 function compact(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "Hidden";
+  if (value === null || value === undefined) return "—";
   return new Intl.NumberFormat("en", {
     notation: "compact",
     maximumFractionDigits: 1,
@@ -371,7 +371,7 @@ export default function YouTubeStudio() {
               <motion.div variants={item}>
                 <Stat
                   label="Subscribers"
-                  value={compact(data.channel.subscribers)}
+                  value={data.channel.subscribers == null ? "Hidden / unavailable" : compact(data.channel.subscribers)}
                   hint={data.channel.subscribers === null ? "Hidden by channel owner" : "Public subscriber count"}
                 />
               </motion.div>
@@ -498,7 +498,7 @@ export default function YouTubeStudio() {
                         </div>
                       </div>
                       <div className="grid grid-cols-3 gap-2 border-y border-[var(--hairline)] px-4 py-3">
-                        <div><p className="mono text-[8px] text-[var(--muted)] uppercase">Subscribers</p><p className="mono text-[11px] mt-1">{compact(competitor.subscribers)}</p></div>
+                        <div><p className="mono text-[8px] text-[var(--muted)] uppercase">Subscribers</p><p className="mono text-[11px] mt-1">{competitor.subscribers == null ? "Hidden / unavailable" : compact(competitor.subscribers)}</p></div>
                         <div><p className="mono text-[8px] text-[var(--muted)] uppercase">Views</p><p className="mono text-[11px] mt-1">{compact(competitor.total_views)}</p></div>
                         <div><p className="mono text-[8px] text-[var(--muted)] uppercase">Videos</p><p className="mono text-[11px] mt-1">{compact(competitor.video_count)}</p></div>
                       </div>
