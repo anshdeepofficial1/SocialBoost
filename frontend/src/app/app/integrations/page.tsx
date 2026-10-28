@@ -95,7 +95,7 @@ export default function Integrations() {
     }
   };
 
-  const sync = async (id: string) => {
+  const sync = async (id: string, platform: string) => {
     setBusy(id);
     setMsg(null);
     try {
@@ -121,7 +121,14 @@ export default function Integrations() {
       } else if (result?.sync_note) {
         setMsg({ kind: "err", text: result.sync_note });
       } else {
-        setMsg({ kind: "err", text: "SocialBoost could not retrieve live stats this time. Reconnect the account and make sure the right Instagram account is linked to your Page." });
+        const providerName = platform === "youtube" ? "YouTube" : "Instagram";
+        const fallback = platform === "youtube"
+          ? "YouTube could not refresh live channel statistics. Your last saved numbers have been kept. Check the Render backend logs for the YouTube Data API error; reconnect Google only if the logs indicate authorization has expired."
+          : "Instagram could not refresh live statistics. Your last saved numbers have been kept. Check the Render backend logs for the Meta Graph API error before changing permissions or reconnecting.";
+        setMsg({
+          kind: "err",
+          text: result?.sync_note || (providerName + " sync did not return live data. " + fallback),
+        });
       }
       load();
     } catch (e: any) {
@@ -247,7 +254,7 @@ export default function Integrations() {
 
                     <div className="flex flex-wrap gap-2 mt-5">
                       {account.mode === "oauth" && (
-                        <button className="btn btn-signal btn-sm" onClick={() => sync(account.id)} disabled={busy === account.id}>
+                        <button className="btn btn-signal btn-sm" onClick={() => sync(account.id, account.platform) disabled={busy === account.id}>
                           {busy === account.id ? "Syncing…" : "Sync live stats"}
                         </button>
                       )}
