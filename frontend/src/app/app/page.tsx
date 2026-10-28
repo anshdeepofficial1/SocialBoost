@@ -61,7 +61,7 @@ export default function Overview() {
             className={`panel panel-hover ui-fade p-4 min-h-[92px] flex items-center gap-4 ${!acc ? "border-dashed" : ""}`}
             style={{ animationDelay: `${index * 90}ms` }}
           >
-            <PlatformMark platform={p} size={34} />
+            <PlatformMark platform={p} size={34} imageUrl={acc?.profile_picture_url} />
             <div className="min-w-0 flex-1">
               <p className="text-[13px] font-medium truncate">
                 {acc ? `@${acc.handle}` : `Connect ${label}`}
@@ -153,10 +153,14 @@ export default function Overview() {
                 >
                   {s.done ? "✓" : String(i + 1).padStart(2, "0")}
                 </span>
-                <Link href={s.href} className={`text-[12px] flex-1 hover:text-[var(--signal)] ${s.done ? "text-[var(--muted)] line-through" : ""}`}>
+                <Link href={s.href} className={`text-[12px] flex-1 hover:text-[var(--signal)] ${s.done ? "text-[var(--muted)]" : ""}`}>
                   {s.label}
                 </Link>
-                <span className="mono text-[9px] text-[var(--muted)]">→</span>
+                {s.done ? (
+                  <span className="tag tag-sage shrink-0">Complete</span>
+                ) : (
+                  <span className="mono text-[9px] text-[var(--muted)]">Next →</span>
+                )}
               </li>
             ))}
           </ol>
