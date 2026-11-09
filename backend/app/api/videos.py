@@ -1,5 +1,6 @@
 import os
 import threading
+from fastapi.responses import FileResponse
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -78,6 +79,25 @@ def list_videos(user=Depends(get_current_user), db: Session = Depends(get_db)):
         .all()
     )
     return [_serialize(v) for v in vids]
+
+
+
+@router.get("/{video_id}/media")
+def private_media(video_id: str, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Authenticated playback: only the owning workspace can read the file."""
+    import mimetypes
+    ws_id = get_workspace_id(user, db)
+    video = get_owned_video(video_id, ws_id, db)
+    if not os.path.isfile(video.path):
+        raise HTTPException(404, "Video file is unavailable")
+    media_type = mimetypes.guess_type(video.original_name or video.filename)[0]
+    if not media_type or not media_type.startswith("video/"):
+        media_type = "application/octet-stream"
+    return FileResponse(
+        path=video.path,
+        media_type=media_type,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.get("/{video_id}")

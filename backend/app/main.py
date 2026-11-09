@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from . import models  # noqa: F401  (registers models with SQLAlchemy)
 from .api import (
@@ -89,7 +88,6 @@ app.include_router(drafts.router)
 
 upload_dir = settings.resolved_upload_dir
 os.makedirs(upload_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=upload_dir), name="uploads")
 
 
 @app.get("/health")

@@ -87,3 +87,23 @@ def test_workspace_isolation_calendar(app_client, admin, other_user):
     assert app_client.get("/calendar/events", headers=other_user).json() == []
     assert app_client.post(f"/calendar/{post_id}/cancel", headers=other_user).status_code == 404
     assert app_client.delete(f"/calendar/{post_id}", headers=other_user).status_code == 404
+
+
+def test_private_video_media_workspace_isolation(app_client, admin, other_user):
+    original = b"test-bytes-for-private-video-access"
+    uploaded = app_client.post(
+        "/videos/upload",
+        files={"file": ("privacy-check.mp4", original, "video/mp4")},
+        headers=admin,
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    video_id = uploaded.json()["video_id"]
+    route = f"/videos/{video_id}/media"
+    assert app_client.get(route).status_code == 401
+    assert app_client.get(route, headers=other_user).status_code == 404
+    owned = app_client.get(route, headers=admin)
+    assert owned.status_code == 200
+    assert owned.content == original
+    assert owned.headers["cache-control"] == "private, no-store"
+    stored = app_client.get(f"/videos/{video_id}", headers=admin).json()
+    assert app_client.get("/uploads/" + stored["filename"]).status_code == 404
