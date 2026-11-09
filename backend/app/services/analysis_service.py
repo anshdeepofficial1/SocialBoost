@@ -29,6 +29,32 @@ _WHISPER_INIT_ATTEMPTED = False
 _WHISPER_LOCK = threading.Lock()
 
 
+
+def create_job(db: Session, video_id: str) -> AnalysisJob:
+    """Persist the analysis job before handing its ID to a worker."""
+    job = AnalysisJob(video_id=video_id, status="queued", progress=0, current_step="queued")
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def _sample_frames(cap, n: int = 10) -> list[tuple[float, object]]:
+    """Sample actual decoded frames across the media timeline."""
+    total = max(0, int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0))
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+    if total <= 0:
+        return []
+    indices = np.unique(np.linspace(0, total - 1, min(n, total), dtype=int))
+    frames = []
+    for index in indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(index))
+        ok, frame = cap.read()
+        if ok:
+            frames.append((float(index / fps) if fps > 0 else 0.0, frame))
+    return frames
+
+
 def _sample_opening_frames(path: str, seconds: float = 3.0, n: int = 8):
     """Sample frames only from the actual opening window, with timestamps."""
     cap = cv2.VideoCapture(path)
