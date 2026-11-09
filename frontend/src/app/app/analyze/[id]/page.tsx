@@ -5,8 +5,6 @@ import { api } from "@/lib/api";
 import Link from "next/link";
 import { PageHeader, Panel, Meter, StatusTag, Empty, PlatformMark } from "@/components/app/ui";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-
 export default function AnalysisReport() {
   const params = useParams();
   const router = useRouter();
@@ -16,6 +14,8 @@ export default function AnalysisReport() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -23,6 +23,26 @@ export default function AnalysisReport() {
       api.videoAnalysis(id).catch((e) => { setErr(e.message); return null; }),
       api.getVideo(id).catch(() => null),
     ]).then(([a, v]) => { setData(a); setVideo(v); }).finally(() => setLoading(false));
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    let disposed = false;
+    let objectUrl: string | null = null;
+    api.privateVideoBlob(id)
+      .then((blob) => {
+        if (disposed) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPreviewUrl(objectUrl);
+        setPreviewError("");
+      })
+      .catch((error) => {
+        if (!disposed) setPreviewError(error?.message || "Preview unavailable.");
+      });
+    return () => {
+      disposed = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [id]);
 
   const remove = async () => {
@@ -76,9 +96,9 @@ export default function AnalysisReport() {
         <div className="space-y-4 lg:sticky lg:top-6">
           <div className="panel overflow-hidden">
             <div className="bg-[var(--night)] aspect-[9/16] max-h-[420px] flex items-center justify-center">
-              {video?.filename ? (
+              {previewUrl ? (
                 <video
-                  src={`${API_BASE}/uploads/${video.filename}`}
+                  src={previewUrl}
                   className="w-full h-full object-contain"
                   controls
                   playsInline
@@ -86,7 +106,7 @@ export default function AnalysisReport() {
                 />
               ) : (
                 <div className="text-center px-6">
-                  <span className="mono text-[9px] tracking-[0.16em] text-[var(--night-muted)]">PREVIEW UNAVAILABLE</span>
+                  <span className="mono text-[9px] tracking-[0.16em] text-[var(--night-muted)]">{previewError || "PREVIEW UNAVAILABLE"}</span>
                 </div>
               )}
             </div>

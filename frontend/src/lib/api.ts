@@ -29,6 +29,20 @@ export const api = {
   uploadVideo: (file: File) => { const fd = new FormData(); fd.append("file", file); return req("/videos/upload", { method: "POST", body: fd }); },
   listVideos: () => req("/videos"),
   getVideo: (id: string) => req(`/videos/${id}`),
+  privateVideoBlob: async (id: string): Promise<Blob> => {
+    const token = getToken();
+    if (!token) throw new Error("Sign in to view this video.");
+    const response = await fetch(`${BASE}/videos/${encodeURIComponent(id)}/media`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      let detail = response.statusText || "Preview unavailable";
+      try { detail = (await response.json()).detail || detail; } catch {}
+      throw new Error(detail);
+    }
+    return response.blob();
+  },
   deleteVideo: (id: string) => req(`/videos/${id}`, { method: "DELETE" }),
   jobStatus: (id: string) => req(`/analysis/job/${id}`),
   videoAnalysis: (id: string) => req(`/analysis/video/${id}`),
