@@ -13,11 +13,19 @@ from app.services import ml_service
 from app.services.scheduler_service import publish_job
 
 
-def test_prediction_without_model_is_illustrative(app_client, admin):
+def test_prediction_without_model_is_illustrative(app_client):
+    # Use a separate empty workspace; other tests may have already trained
+    # the shared admin account and model rebuilding is intentional behavior.
+    signup = app_client.post(
+        "/auth/signup",
+        json={"email": "untrained-views@example.com", "password": "pass123", "full_name": "Untrained"},
+    )
+    assert signup.status_code == 200
+    headers = {"Authorization": f"Bearer {signup.json()['access_token']}"}
     r = app_client.post(
         "/predictions/run",
         json={"platform": "instagram", "caption": "hello world", "duration_seconds": 22},
-        headers=admin,
+        headers=headers,
     )
     assert r.status_code == 200
     body = r.json()
